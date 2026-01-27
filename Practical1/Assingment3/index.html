@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Assignment 3: Unseen Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #fdfdfd; }
+        .box { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        input { padding: 10px; width: 60%; border: 2px solid #ddd; border-radius: 5px; font-size: 1.1em; }
+        button { padding: 10px 20px; background: #673AB7; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #output { margin-top: 20px; font-size: 1.3em; color: #673AB7; height: 30px; }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2>Assignment 3: Generalization</h2>
+        <p>Training Rule: <b>y = 5x + 2</b></p>
+        <p><small>Trained on: x = [1, 2, 3, 4, 5]</small></p>
+        
+        <input type="number" id="unseenX" placeholder="Enter a new number (e.g. 20)">
+        <button onclick="predictNow()">Predict</button>
+
+        <div id="output">Status: Training model...</div>
+        <canvas id="unseenChart"></canvas>
+    </div>
+
+<script>
+    let model;
+    let chart;
+
+    // Initialize Chart
+    const ctx = document.getElementById('unseenChart').getContext('2d');
+    chart = new Chart(ctx, {
+        data: {
+            datasets: [{
+                type: 'scatter',
+                label: 'Training Data',
+                data: [{x:1, y:7}, {x:2, y:12}, {x:3, y:17}, {x:4, y:22}, {x:5, y:27}],
+                backgroundColor: '#FFC107'
+            }, {
+                type: 'line',
+                label: 'AI Knowledge',
+                data: [],
+                borderColor: '#673AB7',
+                fill: false
+            }]
+        }
+    });
+
+    async function initModel() {
+        model = tf.sequential();
+        model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+        model.compile({ optimizer: tf.train.adam(0.1), loss: 'meanSquaredError' });
+
+        const xs = tf.tensor2d([1, 2, 3, 4, 5], [5, 1]);
+        const ys = tf.tensor2d([7, 12, 17, 22, 27], [5, 1]);
+
+        await model.fit(xs, ys, { epochs: 200, verbose: 0 });
+        document.getElementById('output').innerText = "Status: Ready for Prediction!";
+        updateLine();
+    }
+
+    async function predictNow() {
+        const val = parseFloat(document.getElementById('unseenX').value);
+        if (isNaN(val)) return;
+
+        const tensorInput = tf.tensor2d([val], [1, 1]);
+        const prediction = model.predict(tensorInput);
+        const result = (await prediction.data())[0];
+
+        const expected = 5 * val + 2;
+        document.getElementById('output').innerHTML = 
+            `AI Guess: <b>${result.toFixed(2)}</b> (Actual: ${expected})`;
+        
+        updateLine(val);
+    }
+
+    function updateLine(extendedX = 10) {
+        const range = [0, extendedX];
+        const preds = model.predict(tf.tensor2d(range, [2, 1])).dataSync();
+        
+        chart.data.datasets[1].data = [
+            {x: range[0], y: preds[0]},
+            {x: range[1], y: preds[1]}
+        ];
+        chart.update();
+    }
+
+    initModel();
+</script>
+</body>
+</html>

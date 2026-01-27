@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Math Discovery</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f8f9fa; padding: 20px; }
+        .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #equation { font-size: 1.5em; font-weight: bold; color: #ff6384; margin: 20px 0; }
+        .stats { display: flex; justify-content: space-around; background: #eee; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Discovery: How AI learns $y = mx + b$</h2>
+    <p>Target Equation used for data: <b>y = 3x + 10</b></p>
+    
+    <div id="equation">AI is thinking...</div>
+
+    <div class="stats">
+        <div>Weight (m): <span id="weight-val">-</span></div>
+        <div>Bias (b): <span id="bias-val">-</span></div>
+    </div>
+
+    <canvas id="discoveryChart"></canvas>
+</div>
+
+<script>
+    async function startDiscovery() {
+        // 1. Generate Synthetic Data
+        const xVals = [], yVals = [];
+        for (let i = 0; i < 20; i++) {
+            xVals.push(i);
+            // We use 3x + 10 as our "ground truth"
+            yVals.push(3 * i + 10 + (Math.random() * 2 - 1)); 
+        }
+
+        // Normalize (scale down) to help the AI learn faster
+        const xs = tf.tensor2d(xVals, [20, 1]).div(20);
+        const ys = tf.tensor2d(yVals, [20, 1]).div(100);
+
+        // 2. Build Model
+        const model = tf.sequential();
+        model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+        model.compile({optimizer: tf.train.adam(0.05), loss: 'meanSquaredError'});
+
+        // 3. Train
+        await model.fit(xs, ys, {epochs: 150});
+
+        // 4. Extract the Weights!
+        // Weight is the slope, Bias is where it hits the Y-axis
+        const trainedWeight = model.getWeights()[0].dataSync()[0];
+        const trainedBias = model.getWeights()[1].dataSync()[0];
+
+        // Since we normalized, we "un-normalize" to get back to real numbers
+        // Weight Adjustment: (Weight * yMax / xMax)
+        // Bias Adjustment: (Bias * yMax)
+        const finalM = (trainedWeight * 100 / 20).toFixed(2);
+        const finalB = (trainedBias * 100).toFixed(2);
+
+        document.getElementById('weight-val').innerText = finalM;
+        document.getElementById('bias-val').innerText = finalB;
+        document.getElementById('equation').innerText = `AI Equation: y = ${finalM}x + ${finalB}`;
+
+        // 5. Plot results
+        const preds = model.predict(xs).dataSync();
+        const unnormPreds = Array.from(preds).map(p => p * 100);
+
+        new Chart(document.getElementById('discoveryChart'), {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Actual Data Points',
+                    data: xVals.map((x, i) => ({x: x, y: yVals[i]})),
+                    backgroundColor: '#36a2eb'
+                }, {
+                    label: 'AI Learned Line',
+                    type: 'line',
+                    data: xVals.map((x, i) => ({x: x, y: unnormPreds[i]})),
+                    borderColor: '#ff6384',
+                    fill: false
+                }]
+            }
+        });
+    }
+
+    startDiscovery();
+</script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Assignment 2: Fixed Line Visibility</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; text-align: center; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1200px; margin: auto; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h4 { margin-top: 0; }
+        .loss-text { font-family: monospace; font-weight: bold; font-size: 1.1em; color: #e91e63; }
+        button { padding: 15px 30px; font-size: 1em; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <h2>Experiment: Why Learning Rate Matters</h2>
+    <p>Target: <b>y = 2x</b> | Goal: AI must find the line that hits the black dots.</p>
+    <button onclick="runAll()">Start All Experiments</button>
+
+    <div class="grid">
+        <div class="card">
+            <h4 style="color: #2196F3;">Low LR (0.001)</h4>
+            <div id="loss-0" class="loss-text">Loss: -</div>
+            <canvas id="canvas-0"></canvas>
+            <p><small>The line moves too slowly.</small></p>
+        </div>
+
+        <div class="card">
+            <h4 style="color: #4CAF50;">Optimal LR (0.1)</h4>
+            <div id="loss-1" class="loss-text">Loss: -</div>
+            <canvas id="canvas-1"></canvas>
+            <p><small>The line hits the targets perfectly.</small></p>
+        </div>
+
+        <div class="card">
+            <h4 style="color: #F44336;">Too High LR (1.5)</h4>
+            <div id="loss-2" class="loss-text">Loss: -</div>
+            <canvas id="canvas-2"></canvas>
+            <p><small>The line "explodes" and fails.</small></p>
+        </div>
+    </div>
+
+<script>
+    const setupChart = (id) => {
+        const ctx = document.getElementById(`canvas-${id}`).getContext('2d');
+        return new Chart(ctx, {
+            data: {
+                datasets: [{
+                    type: 'scatter',
+                    label: 'Actual Data',
+                    data: [{x: 1, y: 2}, {x: 2, y: 4}, {x: 3, y: 6}, {x: 4, y: 8}],
+                    backgroundColor: 'black',
+                    pointRadius: 6
+                }, {
+                    type: 'line',
+                    label: 'AI Prediction',
+                    data: [], // Starts empty
+                    borderColor: id === 0 ? '#2196F3' : (id === 1 ? '#4CAF50' : '#F44336'),
+                    borderWidth: 4,
+                    fill: false,
+                    tension: 0 // Keep it a straight line
+                }]
+            },
+            options: {
+                scales: {
+                    x: { type: 'linear', min: 0, max: 5 },
+                    y: { min: -2, max: 12 }
+                }
+            }
+        });
+    };
+
+    const charts = [setupChart(0), setupChart(1), setupChart(2)];
+
+    async function trainModel(index, lr) {
+        const model = tf.sequential();
+        model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+        model.compile({ optimizer: tf.train.sgd(lr), loss: 'meanSquaredError' });
+
+        const xs = tf.tensor2d([1, 2, 3, 4], [4, 1]);
+        const ys = tf.tensor2d([2, 4, 6, 8], [4, 1]);
+
+        for (let i = 0; i < 50; i++) {
+            const h = await model.fit(xs, ys, { epochs: 1, verbose: 0 });
+            const currentLoss = h.history.loss[0];
+            document.getElementById(`loss-${index}`).innerText = `Loss: ${currentLoss.toFixed(4)}`;
+
+            // Update the Line on the chart
+            const lineX = [0, 5];
+            const lineY = model.predict(tf.tensor2d(lineX, [2, 1])).dataSync();
+            
+            charts[index].data.datasets[1].data = [
+                {x: lineX[0], y: lineY[0]},
+                {x: lineX[1], y: lineY[1]}
+            ];
+            charts[index].update('none'); // Update without animation for speed
+            
+            await tf.nextFrame(); // Let the UI breathe
+        }
+    }
+
+    function runAll() {
+        trainModel(0, 0.001); // Low
+        trainModel(1, 0.1);   // Optimal
+        trainModel(2, 1.5);   // High
+    }
+</script>
+</body>
+</html>
