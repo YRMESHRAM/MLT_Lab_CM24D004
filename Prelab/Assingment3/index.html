@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script></head>
+<body>
+    <h2>Check Console for Reshaping</h2>
+    <script>
+        // Start with a 1D vector of 4 elements
+        const original = tf.tensor1d([1, 2, 3, 4]);
+
+        // Reshape: Turn the 4 elements into a 2x2 matrix
+        const reshaped = original.reshape([2, 2]);
+
+        // Flatten: Turn the 2x2 matrix back into a 1D vector
+        const flattened = reshaped.flatten();
+
+        console.log("Original (1D):"); original.print();
+        console.log("Reshaped (2x2):"); reshaped.print();
+        console.log("Flattened (Back to 1D):"); flattened.print();
+    </script>
+</body>
+</html>

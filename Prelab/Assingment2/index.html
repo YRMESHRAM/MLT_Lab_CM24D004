@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script></head>
+<body>
+    <h2>Check Console for Math Results</h2>
+    <script>
+        const a = tf.tensor1d([1, 2, 3]);
+        const b = tf.tensor1d([10, 10, 10]);
+
+        // Addition: [1+10, 2+10, 3+10]
+        const sum = a.add(b);
+
+        // Multiplication: [1*10, 2*10, 3*10]
+        const product = a.mul(b);
+
+        console.log("Addition Result:");
+        sum.print();
+        console.log("Multiplication Result:");
+        product.print();
+    </script>
+</body>
+</html>

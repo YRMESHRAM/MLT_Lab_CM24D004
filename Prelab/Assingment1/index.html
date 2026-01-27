@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script></head>
+<body>
+    <h2>Check Console for Dimensions</h2>
+    <script>
+        // Scalar: A single number
+        const scalar = tf.scalar(5);
+        
+        // Vector: 1D Array
+        const vector = tf.tensor1d([10, 20, 30]);
+        
+        // Matrix: 2D Array (Rows and Columns)
+        const matrix = tf.tensor2d([[1, 2], [3, 4]]);
+
+        console.log("Scalar:"); scalar.print();
+        console.log("Vector:"); vector.print();
+        console.log("Matrix:"); matrix.print();
+    </script>
+</body>
+</html>
