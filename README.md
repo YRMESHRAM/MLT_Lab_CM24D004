@@ -1,5 +1,5 @@
-# Machine Learning Tools Lab Portfolio
-### 6th Semester | B.Tech (Computer Science & Engineering)
+# Machine Learning Tools Lab
+### 6th Semester | B.Tech (CSE-AIML)
 
 **Student Name:** Yash Meshram  
 **Roll Number:** CM24D004  
