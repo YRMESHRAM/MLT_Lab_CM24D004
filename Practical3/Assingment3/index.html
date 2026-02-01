@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dense vs RNN Sentiment</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.5; background: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        code { background: #eee; padding: 2px 5px; }
+        #log { font-family: monospace; background: #222; color: #0f0; padding: 15px; border-radius: 5px; height: 200px; overflow-y: scroll; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Neural Network Sentiment Labs</h2>
+    <p>Check the console or the log below to see the model training in real-time.</p>
+    <button onclick="runDenseModel()">Train & Run Dense Network</button>
+    <button onclick="runRNNModel()">Train & Run RNN</button>
+</div>
+
+<div id="log">--- System Ready. Awaiting Training ---</div>
+
+<script>
+    const logger = document.getElementById('log');
+    function log(msg) { logger.innerHTML += `<br>> ${msg}`; logger.scrollTop = logger.scrollHeight; }
+
+    // Dummy Vocabulary & Data
+    // 0: <PAD>, 1: "love", 2: "great", 3: "bad", 4: "terrible"
+    const words = ["love", "great", "bad", "terrible"];
+    const trainX = [
+        [1, 2, 0, 0], [2, 1, 0, 0], // Positive
+        [3, 4, 0, 0], [4, 3, 0, 0]  // Negative
+    ];
+    const trainY = [1, 1, 0, 0]; // 1 = Pos, 0 = Neg
+
+    // --- 1. DENSE NETWORK (Simple MLP) ---
+    async function runDenseModel() {
+        log("Initializing Dense Network...");
+        const model = tf.sequential();
+        model.add(tf.layers.dense({units: 8, activation: 'relu', inputShape: [4]}));
+        model.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+        
+        model.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
+        
+        const xs = tf.tensor2d(trainX);
+        const ys = tf.tensor2d(trainY, [4, 1]);
+
+        log("Training Dense...");
+        await model.fit(xs, ys, {epochs: 50});
+        
+        const prediction = model.predict(tf.tensor2d([[1, 2, 0, 0]]));
+        log(`Dense Prediction for [love, great]: ${prediction.dataSync()[0].toFixed(4)}`);
+    }
+
+    // --- 2. RNN (SimpleRNN Layer) ---
+    async function runRNNModel() {
+        log("Initializing RNN...");
+        const model = tf.sequential();
+        // RNN expects [batch, timesteps, features]
+        model.add(tf.layers.embedding({inputDim: 5, outputDim: 8, inputLength: 4}));
+        model.add(tf.layers.simpleRNN({units: 8}));
+        model.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+
+        model.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
+        
+        const xs = tf.tensor2d(trainX);
+        const ys = tf.tensor2d(trainY, [4, 1]);
+
+        log("Training RNN...");
+        await model.fit(xs, ys, {epochs: 50});
+        
+        const prediction = model.predict(tf.tensor2d([[1, 2, 0, 0]]));
+        log(`RNN Prediction for [love, great]: ${prediction.dataSync()[0].toFixed(4)}`);
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sentiment Logic & Confidence</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 700px; margin: 40px auto; background: #f4f7f6; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 80px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; }
+        button { background: #4a90e2; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .result-box { margin-top: 25px; padding: 15px; border-radius: 8px; display: none; border-left: 5px solid #ccc; }
+        .pos { border-color: #27ae60; background: #ebf9f1; }
+        .neg { border-color: #e74c3c; background: #fdf2f2; }
+        .confidence-bar { height: 10px; background: #ddd; border-radius: 5px; margin-top: 10px; overflow: hidden; }
+        .fill { height: 100%; transition: width 0.5s ease-in-out; }
+        .pos-fill { background: #27ae60; }
+        .neg-fill { background: #e74c3c; }
+        small { color: #666; display: block; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Sentiment Tester</h2>
+    <textarea id="testInput" placeholder="Try: 'The movie was surprisingly good but a bit long'"></textarea>
+    <button onclick="runTest()">Analyze & Score</button>
+
+    <div id="output" class="result-box">
+        <div id="label" style="font-size: 1.4em; font-weight: bold;"></div>
+        <div id="scoreText"></div>
+        <div class="confidence-bar"><div id="barFill" class="fill"></div></div>
+        <small id="interpretation"></small>
+    </div>
+</div>
+
+<script>
+    const trainingData = [
+        { text: "excellent great amazing love happy", label: "positive" },
+        { text: "bad hate terrible awful disappointed", label: "negative" },
+        { text: "good nice wonderful fantastic", label: "positive" },
+        { text: "worst poor boring fail", label: "negative" }
+    ];
+
+    class ConfidenceClassifier {
+        constructor() {
+            this.counts = { positive: {}, negative: {} };
+            this.totals = { positive: 0, negative: 0 };
+        }
+
+        train(data) {
+            data.forEach(item => {
+                item.text.split(' ').forEach(word => {
+                    this.counts[item.label][word] = (this.counts[item.label][word] || 0) + 1;
+                    this.totals[item.label]++;
+                });
+            });
+        }
+
+        analyze(input) {
+            const words = input.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+            let posLogSum = 0;
+            let negLogSum = 0;
+
+            words.forEach(word => {
+                // Laplace smoothing: (count + 1) / (total + unique words)
+                posLogSum += Math.log(((this.counts.positive[word] || 0) + 1) / (this.totals.positive + 100));
+                negLogSum += Math.log(((this.counts.negative[word] || 0) + 1) / (this.totals.negative + 100));
+            });
+
+            // Convert logs back to relative probabilities for display
+            const pPos = Math.exp(posLogSum);
+            const pNeg = Math.exp(negLogSum);
+            const confidence = pPos / (pPos + pNeg);
+
+            return {
+                sentiment: confidence > 0.5 ? "positive" : "negative",
+                confidence: confidence > 0.5 ? confidence : (1 - confidence)
+            };
+        }
+    }
+
+    const ai = new ConfidenceClassifier();
+    ai.train(trainingData);
+
+    function runTest() {
+        const text = document.getElementById('testInput').value;
+        if(!text) return;
+        
+        const result = ai.analyze(text);
+        const out = document.getElementById('output');
+        const fill = document.getElementById('barFill');
+        
+        out.style.display = "block";
+        out.className = `result-box ${result.sentiment === 'positive' ? 'pos' : 'neg'}`;
+        
+        document.getElementById('label').innerText = result.sentiment.toUpperCase();
+        document.getElementById('scoreText').innerText = `Confidence: ${(result.confidence * 100).toFixed(2)}%`;
+        
+        fill.style.width = (result.confidence * 100) + "%";
+        fill.className = `fill ${result.sentiment === 'positive' ? 'pos-fill' : 'neg-fill'}`;
+        
+        document.getElementById('interpretation').innerText = interpret(result.confidence);
+    }
+
+    function interpret(score) {
+        if (score > 0.9) return "Very high certainty. The model recognizes strong keywords.";
+        if (score > 0.7) return "Moderate certainty. Likely correct based on word frequency.";
+        return "Low certainty. The sentence might be neutral or use ambiguous words.";
+    }
+</script>
+</body>
+</html>

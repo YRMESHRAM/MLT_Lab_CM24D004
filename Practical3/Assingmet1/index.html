@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sentiment Classifier</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; line-height: 1.6; }
+        .container { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; padding: 10px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; }
+        #result { margin-top: 20px; font-weight: bold; font-size: 1.2em; }
+        .pos { color: green; }
+        .neg { color: red; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Simple Sentiment AI</h2>
+    <p>Type a sentence to see if it's positive or negative.</p>
+    
+    <textarea id="userInput" placeholder="I love this project! It's so helpful..."></textarea>
+    <br>
+    <button onclick="analyzeSentiment()">Analyze Sentiment</button>
+
+    <div id="result"></div>
+</div>
+
+<script>
+    // 1. Our Training Data
+    const trainingData = [
+        { text: "I love this so much", label: "positive" },
+        { text: "This is amazing and great", label: "positive" },
+        { text: "Fantastic work and excellent quality", label: "positive" },
+        { text: "I am very happy with the result", label: "positive" },
+        { text: "Wonderful experience", label: "positive" },
+        { text: "I hate this so much", label: "negative" },
+        { text: "This is terrible and bad", label: "negative" },
+        { text: "Worst experience ever", label: "negative" },
+        { text: "I am very disappointed and angry", label: "negative" },
+        { text: "Poor quality and awful", label: "negative" }
+    ];
+
+    // 2. Simple Tokenizer (clean and split words)
+    function tokenize(text) {
+        return text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+    }
+
+    // 3. The Classifier Logic
+    class SentimentAnalyzer {
+        constructor() {
+            this.posWords = {};
+            this.negWords = {};
+            this.posCount = 0;
+            this.negCount = 0;
+        }
+
+        train(data) {
+            data.forEach(item => {
+                const words = tokenize(item.text);
+                words.forEach(word => {
+                    if (item.label === "positive") {
+                        this.posWords[word] = (this.posWords[word] || 0) + 1;
+                        this.posCount++;
+                    } else {
+                        this.negWords[word] = (this.negWords[word] || 0) + 1;
+                        this.negCount++;
+                    }
+                });
+            });
+        }
+
+        predict(text) {
+            const words = tokenize(text);
+            let posScore = 0;
+            let negScore = 0;
+
+            words.forEach(word => {
+                // We add 1 for "Laplace smoothing" to avoid multiplying by zero
+                posScore += Math.log((this.posWords[word] || 0) + 1);
+                negScore += Math.log((this.negWords[word] || 0) + 1);
+            });
+
+            return posScore >= negScore ? "positive" : "negative";
+        }
+    }
+
+    // 4. Initialize and Run
+    const classifier = new SentimentAnalyzer();
+    classifier.train(trainingData);
+
+    function analyzeSentiment() {
+        const input = document.getElementById('userInput').value;
+        const resultDiv = document.getElementById('result');
+        
+        if (!input.trim()) return;
+
+        const sentiment = classifier.predict(input);
+        
+        resultDiv.innerHTML = `Sentiment: <span class="${sentiment === 'positive' ? 'pos' : 'neg'}">${sentiment.toUpperCase()}</span>`;
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro MNIST Recognizer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #222; color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        
+        .main-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 20px; }
+        
+        .canvas-box { position: relative; }
+        canvas { border: 4px solid #444; background: black; border-radius: 12px; cursor: crosshair; touch-action: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        
+        .panel { background: #333; padding: 20px; border-radius: 12px; width: 220px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; height: 280px; }
+        
+        #prediction { font-size: 6rem; font-weight: bold; color: #00ff88; line-height: 1; margin: 0; }
+        #confidence { font-size: 1rem; color: #bbb; margin-bottom: 10px; }
+        
+        .preview-label { color: #aaa; font-size: 0.8rem; margin-top: 10px; display: block; }
+        #input-preview { width: 56px; height: 56px; border: 1px solid #555; background: black; image-rendering: pixelated; margin: 0 auto; display: block; }
+        
+        button { padding: 12px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; transition: 0.2s; }
+        .btn-clear { background: #ff4757; color: white; }
+        
+        /* Loading Overlay */
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; flex-direction: column; }
+        .spinner { border: 4px solid #333; border-top: 4px solid #00ff88; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Loading AI Model...</div>
+    </div>
+
+    <h2>Pro Digit Recognizer</h2>
+    <p style="color:#aaa; margin:0">Draw any digit (0-9)</p>
+
+    <div class="main-container">
+        <div class="canvas-box">
+            <canvas id="canvas" width="280" height="280"></canvas>
+        </div>
+
+        <div class="panel">
+            <div>
+                <div>Prediction</div>
+                <div id="prediction">-</div>
+                <div id="confidence">Draw something</div>
+            </div>
+            
+            <div style="border-top: 1px solid #555; padding-top: 10px;">
+                <span class="preview-label">AI Vision (Corrected):</span>
+                <canvas id="input-preview" width="28" height="28"></canvas>
+            </div>
+
+            <button class="btn-clear" onclick="clearCanvas()">Clear</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const previewCanvas = document.getElementById('input-preview');
+        
+        let model;
+        let isDrawing = false;
+        let hasDrawn = false;
+
+        async function loadModel() {
+            try {
+                // Load model
+                model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json');
+                
+                // Warm up
+                model.predict(tf.zeros([1, 28, 28, 1])).dispose();
+                
+                document.getElementById('loading').style.display = 'none';
+            } catch (e) {
+                alert("Error loading model. Check internet connection.");
+            }
+        }
+
+        function getBoundingBox(imageData) {
+            const { data, width, height } = imageData;
+            let minX = width, minY = height, maxX = 0, maxY = 0;
+            let found = false;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (data[(y * width + x) * 4 + 3] > 20) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        found = true;
+                    }
+                }
+            }
+            return found ? { minX, minY, width: maxX - minX, height: maxY - minY } : null;
+        }
+
+        async function predict() {
+            if (!model || !hasDrawn) return;
+
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const bbox = getBoundingBox(imgData);
+            
+            if (!bbox) return;
+
+            tf.tidy(() => {
+                let tensor = tf.browser.fromPixels(canvas, 1);
+                
+                // 1. Crop to the bounding box
+                const cropped = tf.slice(tensor, [bbox.minY, bbox.minX, 0], [bbox.height, bbox.width, 1]);
+
+                // 2. MAKE IT SQUARE (Critical Step!)
+                // We find the largest dimension (height or width)
+                // and pad the shorter dimension with zeros (black) to match it.
+                // This prevents the digit from looking "squashed".
+                const maxDim = Math.max(bbox.height, bbox.width);
+                const padHeight = maxDim - bbox.height;
+                const padWidth = maxDim - bbox.width;
+
+                // Pad symmetrically (half on top/bottom, half on left/right)
+                const paddedSquare = tf.pad(cropped, [
+                    [Math.floor(padHeight / 2), Math.ceil(padHeight / 2)], 
+                    [Math.floor(padWidth / 2), Math.ceil(padWidth / 2)], 
+                    [0, 0]
+                ]);
+
+                // 3. Resize to 20x20
+                // Now that it's square, resizing won't distort the shape.
+                const resized = tf.image.resizeBilinear(paddedSquare, [20, 20]);
+
+                // 4. Add 4px border (Pad to 28x28)
+                // MNIST digits are 20x20 centered in a 28x28 box.
+                const standard = tf.pad(resized, [[4, 4], [4, 4], [0, 0]]);
+
+                // Preview what the AI sees
+                tf.browser.toPixels(standard.div(255), previewCanvas);
+
+                // 5. Predict
+                const input = standard.toFloat().div(255.0).expandDims(0);
+                const predictions = model.predict(input).dataSync();
+                const bestGuess = predictions.indexOf(Math.max(...predictions));
+                const conf = Math.max(...predictions) * 100;
+
+                document.getElementById('prediction').innerText = bestGuess;
+                document.getElementById('confidence').innerText = `${conf.toFixed(1)}%`;
+            });
+        }
+
+        // --- Drawing Logic ---
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: cx - rect.left, y: cy - rect.top };
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            hasDrawn = true;
+            const { x, y } = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineWidth = 20; 
+            ctx.lineCap = 'round'; 
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'white';
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const { x, y } = getPos(e);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function stopDrawing() {
+            if (isDrawing) {
+                isDrawing = false;
+                ctx.closePath();
+                predict(); // Predict only when done
+            }
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const pCtx = previewCanvas.getContext('2d');
+            pCtx.clearRect(0, 0, 28, 28);
+            document.getElementById('prediction').innerText = "-";
+            document.getElementById('confidence').innerText = "";
+            hasDrawn = false;
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        window.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        window.addEventListener('touchend', stopDrawing);
+
+        loadModel();
+    </script>
+</body>
+</html>

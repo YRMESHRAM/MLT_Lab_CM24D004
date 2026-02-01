@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fixed: CNN vs Dense</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; background: #121212; color: #eee; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { margin-bottom: 5px; }
+        .subtitle { color: #aaa; margin-top: 0; margin-bottom: 30px; }
+        
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 1000px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 12px; border: 1px solid #333; display: flex; flex-direction: column; }
+        .card-header { border-bottom: 1px solid #333; margin-bottom: 15px; padding-bottom: 10px; }
+        h2 { margin: 0; font-size: 1.2rem; }
+        p { color: #ccc; font-size: 0.9rem; margin: 5px 0 15px 0; }
+
+        /* Buttons */
+        button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-dense { background: #ff4757; color: white; width: 100%; margin-bottom: 10px; }
+        .btn-dense:hover:not(:disabled) { background: #ff6b81; }
+        .btn-cnn { background: #2ed573; color: black; width: 100%; margin-bottom: 10px; }
+        .btn-cnn:hover:not(:disabled) { background: #7bed9f; }
+        .btn-clear { background: #444; color: white; margin-top: 10px; }
+
+        /* Stats & Visuals */
+        .stat-row { display: flex; justify-content: space-between; font-family: monospace; background: #111; padding: 8px; border-radius: 4px; margin-top: auto; }
+        .sample-gallery { display: flex; gap: 5px; margin-bottom: 10px; height: 30px; justify-content: center; }
+        .sample-img { width: 28px; height: 28px; border: 1px solid #555; background: black; }
+
+        /* Canvas Area */
+        .canvas-container { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #222; padding: 20px; border-radius: 12px; grid-column: span 2; }
+        canvas { background: black; border: 4px solid #444; border-radius: 8px; cursor: crosshair; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        
+        /* Predictions */
+        .pred-display { display: flex; width: 100%; justify-content: space-around; margin-top: 20px; }
+        .pred-box { text-align: center; width: 150px; }
+        .pred-val { font-size: 3.5rem; font-weight: 800; line-height: 1; margin: 10px 0; }
+        .bar-bg { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; width: 0%; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .c-dense { color: #ff4757; } .bg-dense { background: #ff4757; }
+        .c-cnn { color: #2ed573; } .bg-cnn { background: #2ed573; }
+
+    </style>
+</head>
+<body>
+
+    <h1>Fixed Model Battle</h1>
+    <p class="subtitle">1. Train Models &rarr; 2. Verify Data &rarr; 3. Draw & Predict</p>
+
+    <div class="grid">
+        
+        <div class="card" style="border-top: 4px solid #ff4757;">
+            <div class="card-header">
+                <h2 class="c-dense">1. Dense Network</h2>
+                <p>Fast but ignores shapes. Fails when shifted.</p>
+            </div>
+            
+            <div id="gallery-dense" class="sample-gallery">
+                <span style="font-size:0.8rem; color:#555; align-self:center;">Waiting for data...</span>
+            </div>
+
+            <button class="btn-dense" id="btnDense" onclick="startTraining('dense')">Train Dense Model</button>
+            
+            <div class="stat-row">
+                <span id="status-dense">Idle</span>
+                <span id="acc-dense">0%</span>
+            </div>
+        </div>
+
+        <div class="card" style="border-top: 4px solid #2ed573;">
+            <div class="card-header">
+                <h2 class="c-cnn">2. CNN (Convolutional)</h2>
+                <p>Slower but sees patterns. Robust to shifting.</p>
+            </div>
+
+            <div id="gallery-cnn" class="sample-gallery">
+                <span style="font-size:0.8rem; color:#555; align-self:center;">Waiting for data...</span>
+            </div>
+
+            <button class="btn-cnn" id="btnCNN" onclick="startTraining('cnn')">Train CNN Model</button>
+
+            <div class="stat-row">
+                <span id="status-cnn">Idle</span>
+                <span id="acc-cnn">0%</span>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="drawCanvas" width="280" height="280"></canvas>
+            
+            <div class="pred-display">
+                <div class="pred-box">
+                    <div style="font-size:0.9rem; color:#888;">DENSE PREDICTION</div>
+                    <div id="pred-res-dense" class="pred-val c-dense">-</div>
+                    <div class="bar-bg"><div id="conf-bar-dense" class="bar-fill bg-dense"></div></div>
+                    <div id="conf-text-dense" style="font-size:0.8rem; margin-top:5px; color:#aaa;">0%</div>
+                </div>
+
+                <div class="pred-box">
+                    <div style="font-size:0.9rem; color:#888;">CNN PREDICTION</div>
+                    <div id="pred-res-cnn" class="pred-val c-cnn">-</div>
+                    <div class="bar-bg"><div id="conf-bar-cnn" class="bar-fill bg-cnn"></div></div>
+                    <div id="conf-text-cnn" style="font-size:0.8rem; margin-top:5px; color:#aaa;">0%</div>
+                </div>
+            </div>
+
+            <button class="btn-clear" onclick="clearCanvas()">Clear Canvas</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS ---
+        const IMG_H = 28;
+        const IMG_W = 28;
+        const IMG_SIZE = 784;
+        const NUM_CLASSES = 10;
+        const NUM_TRAIN = 2000; // Train on 2000 images for speed
+
+        let dataHelper = null;
+        let modelDense = null;
+        let modelCNN = null;
+
+        // --- 1. ROBUST DATA LOADER ---
+        class MnistLoader {
+            constructor() {
+                this.images = null;
+                this.labels = null;
+            }
+
+            async load() {
+                const SPRITE_URL = 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png';
+                const LABELS_URL = 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8';
+
+                const img = new Image();
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                const imgPromise = new Promise((resolve) => {
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        img.width = img.naturalWidth;
+                        img.height = img.naturalHeight;
+                        
+                        // Set canvas to full sprite size
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        
+                        // Extract images correctly using Grid Logic
+                        const float32Data = new Float32Array(NUM_TRAIN * IMG_SIZE);
+                        const numCols = Math.floor(canvas.width / IMG_W);
+
+                        for (let i = 0; i < NUM_TRAIN; i++) {
+                            // Calculate x, y in the grid
+                            const c = i % numCols;
+                            const r = Math.floor(i / numCols);
+                            
+                            // Get the 28x28 chunk
+                            const imgData = ctx.getImageData(c * IMG_W, r * IMG_H, IMG_W, IMG_H);
+                            
+                            // Normalize 0-255 -> 0.0-1.0
+                            for (let j = 0; j < IMG_SIZE; j++) {
+                                float32Data[i * IMG_SIZE + j] = imgData.data[j * 4] / 255;
+                            }
+                        }
+                        resolve(float32Data);
+                    };
+                    img.src = SPRITE_URL;
+                });
+
+                const labelsPromise = fetch(LABELS_URL).then(r => r.arrayBuffer());
+
+                const [imagesData, labelsBuffer] = await Promise.all([imgPromise, labelsPromise]);
+                
+                this.images = imagesData;
+                this.labels = new Uint8Array(labelsBuffer).slice(0, NUM_TRAIN);
+                console.log("Data Loaded Cleanly.");
+            }
+
+            getTrainBatch() {
+                return {
+                    xs: tf.tensor4d(this.images, [NUM_TRAIN, 28, 28, 1]),
+                    ys: tf.oneHot(tf.tensor1d(this.labels, 'int32'), NUM_CLASSES)
+                }
+            }
+            
+            // Helper to visualize a single image
+            drawToCanvas(index, canvasElem) {
+                const ctx = canvasElem.getContext('2d');
+                const imgData = ctx.createImageData(28, 28);
+                for(let i=0; i<784; i++) {
+                    const val = this.images[index*784 + i] * 255;
+                    imgData.data[i*4+0] = val; // R
+                    imgData.data[i*4+1] = val; // G
+                    imgData.data[i*4+2] = val; // B
+                    imgData.data[i*4+3] = 255; // Alpha
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
+        }
+
+        // --- 2. TRAINING LOGIC ---
+        async function startTraining(type) {
+            const btn = document.getElementById(type === 'dense' ? 'btnDense' : 'btnCNN');
+            const status = document.getElementById(`status-${type}`);
+            const gallery = document.getElementById(`gallery-${type}`);
+            
+            btn.disabled = true;
+            status.innerText = "Loading Data...";
+
+            if (!dataHelper) {
+                dataHelper = new MnistLoader();
+                await dataHelper.load();
+                
+                // Show Verification Samples
+                gallery.innerHTML = "";
+                for(let i=0; i<3; i++) {
+                    const c = document.createElement('canvas');
+                    c.className = "sample-img";
+                    c.width = 28; c.height = 28;
+                    dataHelper.drawToCanvas(Math.floor(Math.random()*100), c);
+                    gallery.appendChild(c);
+                }
+            }
+
+            status.innerText = "Compiling Model...";
+            
+            // Define Model
+            let model;
+            if (type === 'dense') {
+                model = tf.sequential();
+                model.add(tf.layers.flatten({inputShape: [28, 28, 1]}));
+                model.add(tf.layers.dense({units: 128, activation: 'relu'}));
+                model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+            } else {
+                model = tf.sequential();
+                model.add(tf.layers.conv2d({inputShape: [28, 28, 1], kernelSize: 3, filters: 8, activation: 'relu'}));
+                model.add(tf.layers.maxPooling2d({poolSize: 2}));
+                model.add(tf.layers.conv2d({kernelSize: 3, filters: 16, activation: 'relu'}));
+                model.add(tf.layers.maxPooling2d({poolSize: 2}));
+                model.add(tf.layers.flatten());
+                model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+            }
+            
+            model.compile({optimizer: 'adam', loss: 'categoricalCrossentropy', metrics: ['accuracy']});
+            if(type==='dense') modelDense = model; else modelCNN = model;
+
+            // Train
+            const {xs, ys} = dataHelper.getTrainBatch();
+            
+            status.innerText = "Training...";
+            
+            await model.fit(xs, ys, {
+                batchSize: 256,
+                epochs: 10,
+                shuffle: true,
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                        status.innerText = `Epoch ${epoch+1}/10`;
+                        document.getElementById(`acc-${type}`).innerText = (logs.acc * 100).toFixed(1) + "%";
+                        
+                        // Plot
+                        tfvis.show.history(
+                            {name: 'Accuracy', tab: 'Charts'}, 
+                            logs, ['acc'], {width: 300, height: 150}
+                        );
+                    }
+                }
+            });
+
+            status.innerText = "Ready!";
+            btn.disabled = false;
+            xs.dispose(); ys.dispose();
+        }
+
+        // --- 3. CANVAS & PREDICT ---
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        // Init Canvas
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, 280, 280);
+        ctx.lineWidth = 20;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "white";
+
+        // Touch/Mouse Events
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        canvas.addEventListener('mousedown', e => { isDrawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+        canvas.addEventListener('touchstart', e => { isDrawing = true; e.preventDefault(); const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }, {passive:false});
+        
+        window.addEventListener('mousemove', e => {
+            if(!isDrawing) return;
+            const p = getPos(e);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            // Continuous prediction
+            predict();
+        });
+        window.addEventListener('touchmove', e => {
+            if(!isDrawing) return;
+            e.preventDefault();
+            const p = getPos(e);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            predict();
+        }, {passive:false});
+
+        window.addEventListener('mouseup', () => isDrawing = false);
+        window.addEventListener('touchend', () => isDrawing = false);
+
+        function clearCanvas() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 280, 280);
+            updateUI('dense', '-', 0);
+            updateUI('cnn', '-', 0);
+        }
+
+        async function predict() {
+            if(!modelDense && !modelCNN) return;
+
+            // Preprocess: Resize 280x280 -> 28x28 -> Normalize
+            const tensor = tf.browser.fromPixels(canvas, 1)
+                .resizeBilinear([28, 28])
+                .div(255.0)
+                .expandDims(0);
+
+            if(modelDense) {
+                const p = modelDense.predict(tensor).dataSync();
+                const max = Math.max(...p);
+                const idx = p.indexOf(max);
+                updateUI('dense', idx, max);
+            }
+            if(modelCNN) {
+                const p = modelCNN.predict(tensor).dataSync();
+                const max = Math.max(...p);
+                const idx = p.indexOf(max);
+                updateUI('cnn', idx, max);
+            }
+            tensor.dispose();
+        }
+
+        function updateUI(type, pred, conf) {
+            document.getElementById(`pred-res-${type}`).innerText = pred;
+            document.getElementById(`conf-bar-${type}`).style.width = `${conf * 100}%`;
+            document.getElementById(`conf-text-${type}`).innerText = (conf * 100).toFixed(1) + "%";
+        }
+
+    </script>
+</body>
+</html>

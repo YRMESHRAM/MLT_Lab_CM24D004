@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fixed MNIST Recognizer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        
+        .main-container { display: flex; gap: 40px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
+        
+        /* Canvas Styling */
+        .canvas-box { position: relative; }
+        canvas#drawCanvas { background: black; border: 4px solid #333; border-radius: 12px; cursor: crosshair; }
+        
+        /* Prediction Panel */
+        .panel { background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #333; min-width: 250px; text-align: center; }
+        
+        #prediction { font-size: 6rem; font-weight: bold; color: #00ff88; margin: 10px 0; line-height: 1; }
+        .confidence { color: #888; font-size: 0.9rem; margin-bottom: 20px; }
+        
+        /* Debug View */
+        .debug-view { margin-top: 20px; padding-top: 20px; border-top: 1px solid #333; }
+        canvas#debugCanvas { border: 1px solid #555; width: 56px; height: 56px; image-rendering: pixelated; background: black; }
+        
+        /* Controls */
+        button { background: #444; color: white; border: none; padding: 10px 20px; font-size: 1rem; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; }
+        button:hover { background: #555; }
+        button.primary { background: #00ff88; color: black; font-weight: bold; }
+        button.primary:hover { background: #00cc6a; }
+        
+        #status-msg { margin-top: 10px; font-size: 0.85rem; color: #ffcc00; min-height: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>MNIST Digit Recognizer</h1>
+    
+    <div class="main-container">
+        <div class="canvas-box">
+            <canvas id="drawCanvas" width="280" height="280"></canvas>
+            <div style="text-align: center; margin-top: 10px; color: #666; font-size: 0.8rem;">Draw large and centered</div>
+        </div>
+
+        <div class="panel">
+            <div style="text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; color: #aaa;">Prediction</div>
+            <div id="prediction">-</div>
+            <div id="conf" class="confidence">Waiting for input...</div>
+            
+            <button class="primary" onclick="clearCanvas()">Clear Canvas</button>
+            
+            <div class="debug-view">
+                <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 5px;">What the AI Sees:</div>
+                <canvas id="debugCanvas" width="28" height="28"></canvas>
+            </div>
+            
+            <div id="status-msg">Loading Model...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SETUP ---
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const debugCanvas = document.getElementById('debugCanvas');
+        const debugCtx = debugCanvas.getContext('2d');
+        const statusMsg = document.getElementById('status-msg');
+        let model;
+
+        // Setup Drawing Style (MNIST style: White on Black)
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, 280, 280);
+        ctx.lineWidth = 20; // Thicker lines are easier for the AI to see
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "white";
+
+        // --- 2. LOAD MODEL (Auto-Fallback) ---
+        async function loadModel() {
+            try {
+                // Try loading a pre-trained model directly from Google's servers
+                // This bypasses the need for local training and fixes the CORS/Loading error.
+                statusMsg.innerText = "Downloading Google's Pre-trained Model...";
+                model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json');
+                
+                // Warmup the model
+                model.predict(tf.zeros([1, 28, 28, 1])).dispose();
+                
+                statusMsg.innerText = "Model Ready! Start Drawing.";
+                statusMsg.style.color = "#00ff88";
+            } catch (err) {
+                console.error(err);
+                statusMsg.innerText = "Error loading model. Check internet connection.";
+                statusMsg.style.color = "#ff4757";
+            }
+        }
+        loadModel();
+
+        // --- 3. SMART PRE-PROCESSING (The Accuracy Fix) ---
+        function getBoundingBox(ctx) {
+            // This function finds the tightest box around your drawing
+            const { data, width, height } = ctx.getImageData(0, 0, 280, 280);
+            let minX = width, minY = height, maxX = 0, maxY = 0;
+            let found = false;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const alpha = data[(y * width + x) * 4]; // Check Red channel or Alpha
+                    const red = data[(y * width + x) * 4];
+                    if (red > 20) { // If pixel is somewhat white
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        found = true;
+                    }
+                }
+            }
+            return found ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY } : null;
+        }
+
+        async function predict() {
+            if (!model) return;
+
+            // 1. Find the bounding box of the digit
+            const bbox = getBoundingBox(ctx);
+            
+            // If empty canvas, clear prediction
+            if (!bbox) {
+                document.getElementById('prediction').innerText = "-";
+                return;
+            }
+
+            // 2. Crop & Resize to 20x20 (Standard MNIST size)
+            // We create a temporary canvas to do the scaling
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 20;
+            tempCanvas.height = 20;
+            const tCtx = tempCanvas.getContext('2d');
+            
+            // Draw the cropped digit into the 20x20 temp canvas
+            // Use the larger dimension to maintain aspect ratio
+            const maxDim = Math.max(bbox.w, bbox.h);
+            const scale = 20 / maxDim;
+            
+            tCtx.drawImage(
+                canvas, 
+                bbox.x, bbox.y, bbox.w, bbox.h,       // Source crop
+                (20 - bbox.w * scale)/2, (20 - bbox.h * scale)/2, // Center in 20x20
+                bbox.w * scale, bbox.h * scale        // Scaled destination
+            );
+
+            // 3. Place the 20x20 image into the center of a 28x28 black box
+            debugCtx.fillStyle = "black";
+            debugCtx.fillRect(0, 0, 28, 28);
+            debugCtx.drawImage(tempCanvas, 4, 4); // 4px padding on all sides
+
+            // 4. Convert to Tensor & Predict
+            const input = tf.browser.fromPixels(debugCanvas, 1) // 1 channel (grayscale)
+                .toFloat()
+                .div(255.0) // Normalize 0-1
+                .expandDims(0); // Add batch dimension [1, 28, 28, 1]
+
+            const results = model.predict(input).dataSync();
+            const prediction = results.indexOf(Math.max(...results));
+            const confidence = Math.max(...results) * 100;
+
+            document.getElementById('prediction').innerText = prediction;
+            document.getElementById('conf').innerText = confidence.toFixed(1) + "% Confidence";
+        }
+
+        // --- 4. DRAWING EVENTS ---
+        let isDrawing = false;
+        
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.touches ? e.touches[0].clientX : e.clientX) - rect.left,
+                y: (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+            };
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const {x, y} = getPos(e);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function start(e) { isDrawing = true; const {x, y} = getPos(e); ctx.beginPath(); ctx.moveTo(x, y); draw(e); }
+        function stop() { if (isDrawing) { isDrawing = false; predict(); } }
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('mousemove', draw);
+        window.addEventListener('mouseup', stop);
+        canvas.addEventListener('touchstart', start, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        window.addEventListener('touchend', stop);
+
+        function clearCanvas() {
+            ctx.fillRect(0, 0, 280, 280);
+            debugCtx.fillRect(0, 0, 28, 28);
+            document.getElementById('prediction').innerText = "-";
+            document.getElementById('conf').innerText = "Waiting for input...";
+        }
+    </script>
+</body>
+</html>
