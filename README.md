@@ -19,7 +19,8 @@ Click on the links below to navigate through the lab submissions:
 | :--- | :--- | :--- |
 | **📁 Prelab** | Introductory concepts and TensorFlow.js environment setup. | [Explore Prelab](./Prelab) |
 | **📁 Practical1** | Implementation of Linear Regression assignments using TensorFlow.js. | [Explore Practical 1](./Practical1) |
-
+| **📁 Practical2** | **Digit Recognition (MNIST Dataset)**: Train a CNN on MNIST digits and evaluate predictions. | [Explore Practical 2](./Practical2) |
+| **📁 Practical3** | **Text Sentiment Analysis**: Classify text as positive or negative using an RNN or pre-trained sentiment model. | [Explore Practical 3](./Practical3) |
 ---
 
 ## 🛠️ Tech Stack & Tools
