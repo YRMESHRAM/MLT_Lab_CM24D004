@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MobileNet Vision</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3e;
+    --accent: #7c6fff;
+    --accent2: #ff6fb0;
+    --accent3: #6fffd4;
+    --text: #e8e8f0;
+    --muted: #6a6a88;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.3;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px; left: 50%;
+    transform: translateX(-50%);
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(124,111,255,0.12) 0%, transparent 70%);
+    z-index: 0;
+    pointer-events: none;
+    animation: pulseGlow 4s ease-in-out infinite;
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+    50% { opacity: 1; transform: translateX(-50%) scale(1.1); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 820px;
+    padding: 40px 20px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .header { text-align: center; animation: fadeDown 0.8s ease both; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124,111,255,0.1);
+    border: 1px solid rgba(124,111,255,0.3);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 6px 14px;
+    border-radius: 100px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+
+  .badge span {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: blink 1.5s ease infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(32px, 6vw, 52px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 30%, var(--accent) 70%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+  }
+
+  .subtitle { color: var(--muted); font-size: 15px; font-weight: 300; }
+
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .status-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    animation: fadeUp 0.8s 0.2s ease both;
+  }
+
+  .status-bar .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+
+  .status-bar.loading .dot { background: #ffd36f; animation: blink 0.8s infinite; }
+  .status-bar.ready .dot { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+  .status-bar.error .dot { background: #ff6f6f; }
+
+  #status-text { flex: 1; }
+
+  .progress-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    width: 120px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .status-bar.loading .progress-track { display: block; }
+
+  .upload-zone {
+    width: 100%;
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    padding: 50px 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+    animation: fadeUp 0.8s 0.3s ease both;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 40px rgba(124,111,255,0.15);
+    transform: translateY(-2px);
+  }
+
+  .upload-icon {
+    width: 64px; height: 64px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    box-shadow: 0 8px 32px rgba(124,111,255,0.3);
+    transition: transform 0.3s;
+  }
+
+  .upload-zone:hover .upload-icon { transform: scale(1.08) rotate(-4deg); }
+
+  .upload-title { font-size: 16px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .upload-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+  .upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, var(--accent), rgba(124,111,255,0.7));
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 16px rgba(124,111,255,0.3);
+  }
+
+  .upload-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(124,111,255,0.4); }
+
+  input[type="file"] { display: none; }
+
+  .url-row { display: flex; gap: 8px; width: 100%; margin-top: 16px; }
+
+  .url-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .url-input::placeholder { color: var(--muted); }
+  .url-input:focus { border-color: var(--accent); }
+
+  .url-go {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .url-go:hover { background: rgba(124,111,255,0.1); border-color: var(--accent); }
+
+  .panel {
+    display: none;
+    width: 100%;
+    gap: 24px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .panel.visible {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 580px) {
+    .panel.visible { grid-template-columns: 1fr; }
+  }
+
+  .panel-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .img-wrap {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    background: repeating-conic-gradient(#ffffff08 0% 25%, transparent 0% 50%) 0 0 / 20px 20px;
+    position: relative;
+  }
+
+  #preview-img {
+    max-width: 100%;
+    max-height: 280px;
+    border-radius: 10px;
+    object-fit: contain;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .scanning-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,10,15,0.7);
+    backdrop-filter: blur(4px);
+    gap: 12px;
+  }
+
+  .scanning-overlay.active { display: flex; }
+
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanMove 1.5s ease-in-out infinite;
+    box-shadow: 0 0 12px var(--accent);
+  }
+
+  @keyframes scanMove {
+    0% { top: 10%; }
+    100% { top: 90%; }
+  }
+
+  .scanning-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    animation: blink 1s infinite;
+    z-index: 2;
+  }
+
+  .results-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 240px;
+  }
+
+  .result-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-size: 13px;
+    gap: 8px;
+    padding: 40px 0;
+  }
+
+  .result-item { animation: slideIn 0.4s ease both; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .result-item:nth-child(2) { animation-delay: 0.08s; }
+  .result-item:nth-child(3) { animation-delay: 0.16s; }
+
+  .result-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+
+  .result-name { font-size: 13px; font-weight: 500; color: var(--text); text-transform: capitalize; }
+  .result-pct { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--accent); }
+
+  .result-track {
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .result-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.8s cubic-bezier(0.23,1,0.32,1);
+    width: 0;
+  }
+
+  .result-item:nth-child(1) .result-fill { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .result-item:nth-child(2) .result-fill { background: linear-gradient(90deg, var(--accent2), #ff9f6f); }
+  .result-item:nth-child(3) .result-fill { background: linear-gradient(90deg, var(--accent3), #6fc8ff); }
+
+  .top-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124,111,255,0.12);
+    border: 1px solid rgba(124,111,255,0.25);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--accent);
+  }
+
+  .animals-section {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: fadeUp 0.8s 0.4s ease both;
+  }
+
+  .animals-header {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .animals-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .animals-count {
+    background: rgba(124,111,255,0.15);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    border: 1px solid rgba(124,111,255,0.25);
+  }
+
+  .animals-body {
+    padding: 20px 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .animal-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text);
+    transition: all 0.2s;
+    cursor: default;
+  }
+
+  .animal-tag:hover {
+    border-color: var(--accent);
+    background: rgba(124,111,255,0.08);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .animal-tag .emoji { font-size: 14px; }
+
+  .reset-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: -10px;
+  }
+
+  .reset-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .footer {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: 'Space Mono', monospace;
+    text-align: center;
+    padding-bottom: 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="badge"><span></span> MobileNet v2 · TensorFlow.js</div>
+    <h1>Vision<br/>Classifier</h1>
+    <p class="subtitle">Real-time image classification running entirely in your browser</p>
+  </div>
+
+  <div class="status-bar loading" id="status-bar">
+    <div class="dot"></div>
+    <span id="status-text">Loading MobileNet model…</span>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  </div>
+
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="file-input" accept="image/*"/>
+    <div class="upload-icon">🔭</div>
+    <div class="upload-title">Drop an image here</div>
+    <div class="upload-sub">or paste a URL below · supports JPG, PNG, WebP, GIF</div>
+    <button class="upload-btn" onclick="document.getElementById('file-input').click()">↑ Browse files</button>
+    <div class="url-row">
+      <input class="url-input" type="text" id="url-input" placeholder="https://example.com/image.jpg"/>
+      <button class="url-go" id="url-btn">Classify →</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="panel-box">
+      <div class="panel-header"><span>🖼</span> Preview</div>
+      <div class="img-wrap">
+        <img id="preview-img" src="" alt="Preview"/>
+        <div class="scanning-overlay" id="scan-overlay">
+          <div class="scan-line"></div>
+          <span class="scanning-text">ANALYZING…</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-header"><span>✦</span> Predictions</div>
+      <div class="results-body" id="results-body">
+        <div class="result-empty"><span style="font-size:28px">👁</span>Awaiting classification…</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="reset-btn" id="reset-btn" style="display:none" onclick="resetAll()">← Classify another image</button>
+
+  <div class="animals-section" id="samples-section">
+    <div class="animals-header">
+      <div class="animals-header-left"><span>🐾</span> Supported animals</div>
+      <div class="animals-count">5 animals</div>
+    </div>
+    <div class="animals-body">
+      <div class="animal-tag"><span class="emoji">🐈</span> Cat</div>
+      <div class="animal-tag"><span class="emoji">🐕</span> Dog</div>
+      <div class="animal-tag"><span class="emoji">🐦</span> Bird</div>
+      <div class="animal-tag"><span class="emoji">🐠</span> Fish</div>
+      <div class="animal-tag"><span class="emoji">🐇</span> Rabbit</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Powered by <a href="https://www.tensorflow.org/js" target="_blank">TensorFlow.js</a> &amp; MobileNet — runs 100% client-side
+</div>
+
+<script>
+  let model = null;
+
+  async function loadModel() {
+    setStatus('loading', 'Loading MobileNet model…');
+    animateProgress();
+    try {
+      model = await mobilenet.load({ version: 2, alpha: 1.0 });
+      document.getElementById('progress-fill').style.width = '100%';
+      setStatus('ready', 'Model ready — drop an image to classify');
+    } catch (e) {
+      setStatus('error', 'Failed to load model. Check your connection.');
+    }
+  }
+
+  function animateProgress() {
+    let p = 0;
+    const fill = document.getElementById('progress-fill');
+    const iv = setInterval(() => {
+      p += Math.random() * 12;
+      if (p > 90) { clearInterval(iv); return; }
+      fill.style.width = p + '%';
+    }, 200);
+  }
+
+  function setStatus(state, text) {
+    const bar = document.getElementById('status-bar');
+    bar.className = 'status-bar ' + state;
+    document.getElementById('status-text').textContent = text;
+  }
+
+  const dropZone = document.getElementById('drop-zone');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) loadFile(file);
+  });
+
+  document.getElementById('file-input').addEventListener('change', e => {
+    if (e.target.files[0]) loadFile(e.target.files[0]);
+  });
+
+  document.getElementById('url-btn').onclick = () => {
+    const url = document.getElementById('url-input').value.trim();
+    if (url) loadFromUrl(url);
+  };
+
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('url-btn').click();
+  });
+
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) { loadFile(item.getAsFile()); break; }
+    }
+  });
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = ev => showAndClassify(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  function loadFromUrl(url) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      showAndClassify(canvas.toDataURL());
+    };
+    img.onerror = () => setStatus('error', 'Could not load image from URL (CORS or network issue).');
+    img.src = url;
+  }
+
+  function showAndClassify(src) {
+    if (!model) { setStatus('error', 'Model not loaded yet, please wait…'); return; }
+    const img = document.getElementById('preview-img');
+    img.src = src;
+    img.onload = () => classify(img);
+    document.getElementById('panel').classList.add('visible');
+    document.getElementById('reset-btn').style.display = 'inline-block';
+    document.getElementById('samples-section').style.display = 'none';
+    document.getElementById('results-body').innerHTML = `<div class="result-empty"><span style="font-size:28px">⚡</span>Classifying…</div>`;
+    document.getElementById('scan-overlay').classList.add('active');
+    setStatus('loading', 'Running inference…');
+  }
+
+  // Only show results matching these 5 animals
+  const ALLOWED_ANIMALS = [
+    { label: 'Cat',    emoji: '🐈', keywords: ['cat', 'tabby', 'kitten', 'persian', 'siamese', 'lynx', 'cougar', 'cheetah', 'jaguar', 'leopard', 'lion', 'tiger'] },
+    { label: 'Dog',    emoji: '🐕', keywords: ['dog', 'puppy', 'hound', 'terrier', 'retriever', 'poodle', 'bulldog', 'spaniel', 'shepherd', 'husky', 'labrador', 'dachshund', 'pomeranian', 'beagle', 'boxer', 'collie', 'corgi', 'dalmatian', 'doberman', 'greyhound', 'mastiff', 'rottweiler', 'samoyed', 'schnauzer', 'setter', 'shih', 'spitz', 'weimaraner', 'whippet'] },
+    { label: 'Bird',   emoji: '🐦', keywords: ['bird', 'robin', 'sparrow', 'finch', 'parrot', 'macaw', 'eagle', 'hawk', 'owl', 'penguin', 'flamingo', 'peacock', 'crow', 'jay', 'pigeon', 'dove', 'hummingbird', 'kingfisher', 'toucan', 'woodpecker', 'wren', 'swift', 'swallow', 'stork', 'crane', 'heron', 'pelican', 'cockatoo', 'budgerigar', 'canary', 'rooster', 'hen', 'turkey', 'vulture', 'condor', 'albatross', 'magpie'] },
+    { label: 'Fish',   emoji: '🐠', keywords: ['fish', 'shark', 'goldfish', 'salmon', 'tuna', 'trout', 'bass', 'perch', 'carp', 'eel', 'catfish', 'swordfish', 'clownfish', 'angelfish', 'blowfish', 'pufferfish', 'stingray', 'ray', 'cod', 'herring', 'tilapia', 'mackerel', 'barracuda', 'piranha'] },
+    { label: 'Rabbit', emoji: '🐇', keywords: ['rabbit', 'hare', 'bunny'] },
+  ];
+
+  function matchAnimal(className) {
+    const lower = className.toLowerCase();
+    for (const animal of ALLOWED_ANIMALS) {
+      if (animal.keywords.some(k => lower.includes(k))) return animal;
+    }
+    return null;
+  }
+
+  async function classify(imgEl) {
+    try {
+      const predictions = await model.classify(imgEl, 10);
+      document.getElementById('scan-overlay').classList.remove('active');
+
+      // Find best matching prediction for each allowed animal
+      const matched = [];
+      const usedLabels = new Set();
+
+      for (const p of predictions) {
+        const animal = matchAnimal(p.className);
+        if (animal && !usedLabels.has(animal.label)) {
+          usedLabels.has(animal.label);
+          matched.push({ animal, probability: p.probability, className: p.className });
+          usedLabels.add(animal.label);
+        }
+      }
+
+      if (matched.length === 0) {
+        renderNoMatch();
+        setStatus('ready', 'No supported animal detected');
+      } else {
+        renderResults(matched);
+        setStatus('ready', 'Detected: ' + matched[0].animal.label);
+      }
+    } catch (e) {
+      document.getElementById('scan-overlay').classList.remove('active');
+      setStatus('error', 'Classification failed: ' + e.message);
+    }
+  }
+
+  function renderNoMatch() {
+    const body = document.getElementById('results-body');
+    body.innerHTML = `<div class="result-empty"><span style="font-size:28px">🤷</span>No cat, dog, bird, fish, or rabbit detected.<br/>Try a different image!</div>`;
+  }
+
+  function renderResults(matched) {
+    const body = document.getElementById('results-body');
+    const top = matched[0];
+    let html = `<div class="top-tag">${top.animal.emoji} ${top.animal.label}</div>`;
+    matched.forEach(m => {
+      const pct = (m.probability * 100).toFixed(1);
+      html += `
+        <div class="result-item">
+          <div class="result-label">
+            <span class="result-name">${m.animal.emoji} ${m.animal.label}</span>
+            <span class="result-pct">${pct}%</span>
+          </div>
+          <div class="result-track">
+            <div class="result-fill" data-width="${pct}" style="width:0%"></div>
+          </div>
+        </div>`;
+    });
+    body.innerHTML = html;
+    setTimeout(() => {
+      body.querySelectorAll('.result-fill').forEach(el => {
+        el.style.width = el.dataset.width + '%';
+      });
+    }, 50);
+  }
+
+  function resetAll() {
+    document.getElementById('panel').classList.remove('visible');
+    document.getElementById('reset-btn').style.display = 'none';
+    document.getElementById('samples-section').style.display = 'block';
+    document.getElementById('preview-img').src = '';
+    document.getElementById('file-input').value = '';
+    document.getElementById('url-input').value = '';
+    setStatus('ready', 'Model ready — drop an image to classify');
+  }
+
+  loadModel();
+</script>
+</body>
+</html>
