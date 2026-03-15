@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MobileNet Static Classifier</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Fraunces:ital,wght@0,300;0,700;1,300&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    :root {
+      --cream: #f5f0e8;
+      --ink: #1a1410;
+      --rust: #c4522a;
+      --gold: #d4a843;
+      --sage: #6b8c6b;
+      --paper: #ede8dc;
+      --shadow: rgba(26,20,16,0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'Fraunces', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Grain texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.6;
+    }
+
+    /* Decorative corner lines */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 24px; left: 24px; right: 24px; bottom: 24px;
+      border: 1px solid rgba(26,20,16,0.1);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      animation: riseIn 0.9s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .eyebrow {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--rust);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .eyebrow::before,
+    .eyebrow::after {
+      content: '';
+      width: 32px;
+      height: 1px;
+      background: var(--rust);
+      opacity: 0.5;
+    }
+
+    h1 {
+      font-size: clamp(38px, 7vw, 60px);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+
+    h1 em {
+      font-style: italic;
+      font-weight: 300;
+      color: var(--rust);
+    }
+
+    .tagline {
+      margin-top: 10px;
+      font-size: 15px;
+      font-weight: 300;
+      font-style: italic;
+      color: rgba(26,20,16,0.5);
+      letter-spacing: 0.01em;
+    }
+
+    /* ── Card ── */
+    .card {
+      width: 100%;
+      background: var(--paper);
+      border: 1px solid rgba(26,20,16,0.15);
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 6px 6px 0 rgba(26,20,16,0.08), 0 2px 20px var(--shadow);
+      animation: riseIn 0.9s 0.15s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    .card-header {
+      padding: 14px 24px;
+      border-bottom: 1px solid rgba(26,20,16,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(26,20,16,0.03);
+    }
+
+    .card-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(26,20,16,0.4);
+    }
+
+    .status-pill {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid currentColor;
+      transition: all 0.3s;
+    }
+
+    .status-pill.loading { color: var(--gold); border-color: var(--gold); }
+    .status-pill.ready   { color: var(--sage); border-color: var(--sage); }
+    .status-pill.error   { color: var(--rust); border-color: var(--rust); }
+
+    /* ── Image area ── */
+    .image-area {
+      position: relative;
+      background: rgba(26,20,16,0.04);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      overflow: hidden;
+    }
+
+    #static-img {
+      max-width: 100%;
+      max-height: 400px;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* scan line animation while classifying */
+    .scan-line {
+      display: none;
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 0%, var(--rust) 50%, transparent 100%);
+      animation: scan 1.4s ease-in-out infinite;
+      box-shadow: 0 0 10px var(--rust);
+    }
+
+    .scan-line.active { display: block; }
+
+    @keyframes scan {
+      0%   { top: 5%; opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { top: 95%; opacity: 0; }
+    }
+
+    /* ── Results ── */
+    .results-area {
+      padding: 28px 28px 32px;
+      border-top: 1px solid rgba(26,20,16,0.1);
+    }
+
+    .results-heading {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(26,20,16,0.35);
+      margin-bottom: 20px;
+    }
+
+    .prediction-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .prediction-item {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .prediction-item.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .prediction-item:nth-child(2) { transition-delay: 0.08s; }
+    .prediction-item:nth-child(3) { transition-delay: 0.16s; }
+
+    .pred-meta {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 7px;
+    }
+
+    .pred-rank {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: rgba(26,20,16,0.3);
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+
+    .pred-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
+      flex: 1;
+      text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pred-pct {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--rust);
+      margin-left: 12px;
+      flex-shrink: 0;
+    }
+
+    .pred-bar-track {
+      height: 5px;
+      background: rgba(26,20,16,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .pred-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.9s cubic-bezier(0.16,1,0.3,1);
+    }
+
+    .prediction-item:nth-child(1) .pred-bar-fill { background: var(--rust); }
+    .prediction-item:nth-child(2) .pred-bar-fill { background: var(--gold); }
+    .prediction-item:nth-child(3) .pred-bar-fill { background: var(--sage); }
+
+    /* placeholder when not yet classified */
+    .placeholder-msg {
+      text-align: center;
+      padding: 16px 0 8px;
+      color: rgba(26,20,16,0.35);
+      font-size: 14px;
+      font-style: italic;
+      font-weight: 300;
+    }
+
+    /* ── Classify button ── */
+    .btn-wrap {
+      width: 100%;
+      animation: riseIn 0.9s 0.25s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    #classify-btn {
+      width: 100%;
+      padding: 18px 28px;
+      background: var(--ink);
+      color: var(--cream);
+      border: none;
+      border-radius: 4px;
+      font-family: 'Fraunces', serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 4px 4px 0 rgba(26,20,16,0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #classify-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--rust);
+      transform: translateX(-101%);
+      transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
+    }
+
+    #classify-btn:hover::before { transform: translateX(0); }
+
+    #classify-btn span { position: relative; z-index: 1; }
+
+    #classify-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0 rgba(26,20,16,0.25);
+    }
+
+    #classify-btn:active {
+      transform: translate(1px, 1px);
+      box-shadow: 2px 2px 0 rgba(26,20,16,0.2);
+    }
+
+    #classify-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    #classify-btn:disabled::before { display: none; }
+
+    /* ── Footer note ── */
+    .note {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: rgba(26,20,16,0.3);
+      text-align: center;
+      animation: riseIn 0.9s 0.35s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="eyebrow">MobileNet v2 · TensorFlow.js</div>
+    <h1>Image<br/><em>Recognition</em></h1>
+    <p class="tagline">Classify a static image · top‑3 predictions</p>
+  </header>
+
+  <!-- Image + Results Card -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-label">Static Image · Golden Retriever</span>
+      <span class="status-pill loading" id="status-pill">Loading model…</span>
+    </div>
+
+    <div class="image-area">
+      <!-- Static image — a publicly available dog photo (CORS-safe) -->
+      <img
+        id="static-img"
+        crossorigin="anonymous"
+        src="https://i.guim.co.uk/img/media/327aa3f0c3b8e40ab03b4ae80319064e401c6fbc/377_133_3542_2834/master/3542.jpg?width=1200&height=1200&quality=85&auto=format&fit=crop&s=34d32522f47e4a67286f9894fc81c863"
+        alt="Static image to classify"
+      />
+      <div class="scan-line" id="scan-line"></div>
+    </div>
+
+    <div class="results-area">
+      <div class="results-heading">// Top-3 Predictions</div>
+      <div class="prediction-list" id="pred-list">
+        <div class="placeholder-msg">Hit "Classify Image" to run inference</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Button -->
+  <div class="btn-wrap">
+    <button id="classify-btn" disabled>
+      <span>⏳ Loading Model…</span>
+    </button>
+  </div>
+
+  <p class="note">Runs entirely in your browser · no data is uploaded · powered by TensorFlow.js</p>
+
+</div>
+
+<script>
+  let model = null;
+
+  const btn       = document.getElementById('classify-btn');
+  const pill      = document.getElementById('status-pill');
+  const predList  = document.getElementById('pred-list');
+  const scanLine  = document.getElementById('scan-line');
+  const imgEl     = document.getElementById('static-img');
+
+  // ── Load model on page load ──────────────────────────────────────────
+  (async () => {
+    try {
+      model = await mobilenet.load({ version: 2, alpha: 1.0 });
+      setPill('ready', '● Model ready');
+      btn.disabled = false;
+      btn.innerHTML = '<span>Classify Image →</span>';
+    } catch (e) {
+      setPill('error', '✕ Load failed');
+      btn.innerHTML = '<span>Model failed to load</span>';
+    }
+  })();
+
+  // ── Button click ─────────────────────────────────────────────────────
+  btn.addEventListener('click', async () => {
+    if (!model) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span>Classifying…</span>';
+    setPill('loading', '◌ Running…');
+    scanLine.classList.add('active');
+    predList.innerHTML = '';
+
+    // Small delay so the scan animation is visible
+    await new Promise(r => setTimeout(r, 600));
+
+    try {
+      const predictions = await model.classify(imgEl, 3);
+      scanLine.classList.remove('active');
+      renderPredictions(predictions);
+      setPill('ready', '✓ Done');
+    } catch (e) {
+      scanLine.classList.remove('active');
+      setPill('error', '✕ Error');
+      predList.innerHTML = `<div class="placeholder-msg">Classification failed: ${e.message}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<span>Classify Again →</span>';
+  });
+
+  // ── Render top-3 ─────────────────────────────────────────────────────
+  function renderPredictions(predictions) {
+    predList.innerHTML = '';
+
+    predictions.forEach((p, i) => {
+      const pct  = (p.probability * 100).toFixed(2);
+      const name = p.className.split(',')[0].trim();
+
+      const item = document.createElement('div');
+      item.className = 'prediction-item';
+      item.innerHTML = `
+        <div class="pred-meta">
+          <span class="pred-rank">#${i + 1}</span>
+          <span class="pred-name">${name}</span>
+          <span class="pred-pct">${pct}%</span>
+        </div>
+        <div class="pred-bar-track">
+          <div class="pred-bar-fill" data-w="${pct}"></div>
+        </div>`;
+
+      predList.appendChild(item);
+
+      // Stagger reveal + bar animation
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          item.classList.add('show');
+          item.querySelector('.pred-bar-fill').style.width = pct + '%';
+        }, i * 80);
+      });
+    });
+  }
+
+  function setPill(state, text) {
+    pill.className = 'status-pill ' + state;
+    pill.textContent = text;
+  }
+</script>
+</body>
+</html>

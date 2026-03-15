@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MobileNet Accuracy Test</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  
+  <style>
+    /* CSS Variables for Theming */
+    :root {
+      --bg: #0d0d0d;
+      --card: #1c1c1c;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #555;
+      --green: #00e5a0;
+      --red: #ff4d6d;
+      --yellow: #ffd166;
+      --blue: #4da6ff;
+    }
+
+    /* Global Reset */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      padding: 40px 20px 60px;
+    }
+
+    /* Background Pattern */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* Layout */
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1050px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 36px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    /* Typography */
+    .sup {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    h1 span {
+      color: var(--green);
+    }
+
+    /* Scoreboard */
+    .scoreboard {
+      display: flex;
+      gap: 2px;
+      background: var(--border);
+      border-radius: 12px;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+
+    .sc {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 12px 20px;
+      text-align: center;
+      min-width: 80px;
+    }
+
+    .sc .v {
+      font-size: 26px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+    }
+
+    .sc .l {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .sc.c .v { color: var(--green); }
+    .sc.w .v { color: var(--red); }
+    .sc.a .v { color: var(--yellow); }
+
+    /* Status Bar */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .status.loading .dot { background: var(--yellow); animation: blink 0.8s infinite; }
+    .status.ready .dot   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status.done .dot    { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+    .status.error .dot   { background: var(--red); }
+
+    .pbar {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .status.loading .pbar {
+      display: block;
+    }
+
+    .pfill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      border-radius: 2px;
+      width: 0;
+      transition: width 0.4s;
+    }
+
+    /* Action Button */
+    .run-btn {
+      width: 100%;
+      padding: 18px;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Syne', sans-serif;
+      font-size: 17px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s 0.15s ease both;
+    }
+
+    .run-btn:hover:not(:disabled) {
+      background: #00ffb3;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(0, 229, 160, 0.25);
+    }
+
+    .run-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Grid & Cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 18px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .img-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      transition: transform 0.2s;
+    }
+
+    .img-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .img-card.correct { border-color: rgba(0, 229, 160, 0.35); }
+    .img-card.wrong { border-color: rgba(255, 77, 109, 0.35); }
+
+    .thumb {
+      position: relative;
+      height: 190px;
+      background: #111;
+      overflow: hidden;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.4s;
+    }
+
+    .img-card:hover .thumb img {
+      transform: scale(1.05);
+    }
+
+    .idx {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(6px);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 100px;
+    }
+
+    .rbadge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .rbadge.show { display: flex; }
+    .rbadge.correct { color: var(--green); }
+    .rbadge.wrong { color: var(--red); }
+
+    /* Scanner Overlay */
+    .scan-ov {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(2px);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scan-ov.active { display: flex; }
+
+    .sline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+      box-shadow: 0 0 10px var(--green);
+      animation: scanMove 1.2s ease-in-out infinite;
+    }
+
+    .stxt {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      letter-spacing: 0.1em;
+      animation: blink 0.8s infinite;
+      z-index: 2;
+    }
+
+    /* Card Body */
+    .cbody {
+      padding: 16px;
+    }
+
+    .arow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .aname {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tlbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* Predictions */
+    .preds {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .prow {
+      opacity: 0;
+      transform: translateX(-5px);
+      transition: opacity 0.35s, transform 0.35s;
+    }
+
+    .prow.show {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    .ptop {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 3px;
+    }
+
+    .pname {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 68%;
+    }
+
+    .pname.r1 {
+      color: var(--green);
+      font-size: 13px;
+    }
+
+    .ppct {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .ptrack {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .pfillb {
+      height: 100%;
+      border-radius: 2px;
+      width: 0;
+      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .prow:nth-child(1) .pfillb { background: var(--green); }
+    .prow:nth-child(2) .pfillb { background: var(--blue); }
+    .prow:nth-child(3) .pfillb { background: #ff8c42; }
+
+    /* Loading Skeletons */
+    .skel {
+      height: 26px;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--border) 25%, #222 50%, var(--border) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease infinite;
+      margin-bottom: 8px;
+    }
+
+    /* Verdicts */
+    .verdict {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .verdict.show { display: flex; }
+    .verdict.correct {
+      background: rgba(0, 229, 160, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(0, 229, 160, 0.2);
+    }
+    .verdict.wrong {
+      background: rgba(255, 77, 109, 0.1);
+      color: var(--red);
+      border: 1px solid rgba(255, 77, 109, 0.2);
+    }
+
+    /* Summary Section */
+    .summary {
+      display: none;
+      margin-top: 32px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .summary.show { display: block; }
+
+    .sum-hdr {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .sum-body {
+      padding: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+
+    .sstat {
+      background: #161616;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .sstat .sv {
+      font-size: 32px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+      margin-bottom: 5px;
+    }
+
+    .sstat .sl {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .sstat.sc2 .sv { color: var(--green); }
+    .sstat.sw .sv  { color: var(--red); }
+    .sstat.sa .sv  { color: var(--yellow); }
+    .sstat.sf .sv  { color: var(--blue); }
+
+    /* Footer Note */
+    .fnote {
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 40px;
+      letter-spacing: 0.08em;
+    }
+
+    /* Animations */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+
+    @keyframes scanMove {
+      0% { top: 0; }
+      100% { top: 100%; }
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <div class="sup">MobileNet v2 · Accuracy Test</div>
+      <h1>Classification <span>Benchmark</span></h1>
+    </div>
+    <div class="scoreboard">
+      <div class="sc c">
+        <div class="v" id="sc-c">–</div>
+        <div class="l">Correct</div>
+      </div>
+      <div class="sc w">
+        <div class="v" id="sc-w">–</div>
+        <div class="l">Wrong</div>
+      </div>
+      <div class="sc a">
+        <div class="v" id="sc-a">–</div>
+        <div class="l">Accuracy</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status loading" id="status">
+    <div class="dot"></div>
+    <span id="stxt">Loading MobileNet model…</span>
+    <div class="pbar">
+      <div class="pfill" id="pfill"></div>
+    </div>
+  </div>
+
+  <button class="run-btn" id="run-btn" disabled>
+    <span id="rlbl">⏳ Loading Model…</span>
+  </button>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="summary" id="summary">
+    <div class="sum-hdr">📊 Test Summary</div>
+    <div class="sum-body">
+      <div class="sstat sc2">
+        <div class="sv" id="s-c">0</div>
+        <div class="sl">Correct</div>
+      </div>
+      <div class="sstat sw">
+        <div class="sv" id="s-w">0</div>
+        <div class="sl">Wrong</div>
+      </div>
+      <div class="sstat sa">
+        <div class="sv" id="s-a">0%</div>
+        <div class="sl">Accuracy</div>
+      </div>
+      <div class="sstat sf">
+        <div class="sv" id="s-f">0%</div>
+        <div class="sl">Avg Confidence</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="fnote">Runs in-browser · TensorFlow.js · MobileNet v2 · ImageNet labels</p>
+</div>
+
+<script>
+  // Dataset configuration
+  const IMGS = [
+    { url: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTy2aEZIu5GRNqIpl9no2awugYN3L9h0eIsMA&s', label: 'Cat', emoji: '🐈', kw: ['cat', 'tabby', 'kitten', 'persian', 'siamese', 'tiger cat', 'egyptian cat'] },
+    { url: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSAr8uiBL0lT8ux9YKz4jX5rGTPqDMA-k9dFQ&s', label: 'Dog', emoji: '🐕', kw: ['dog', 'labrador', 'retriever', 'golden', 'puppy', 'hound'] },
+    { url: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRdosXnBbND7vUe_0LjH1uplTJEKoYJr28DZw&s', label: 'Bird', emoji: '🐦', kw: ['owl', 'bird', 'hawk', 'eagle', 'robin', 'finch', 'sparrow'] },
+    { url: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQXUm5fqPjYJ1ZQPiPphFH0BocpO412ECODSw&s', label: 'Fish', emoji: '🐠', kw: ['fish', 'clownfish', 'goldfish', 'shark', 'eel', 'coho', 'coral'] },
+    { url: 'https://media.istockphoto.com/id/1200165937/photo/white-colour-rabbit-playing-in-the-field.jpg?s=612x612&w=0&k=20&c=fJe0lMuC_-BQkLFFVLWF5f8_Jf13l14pRwRZAosEPYI=', label: 'Rabbit', emoji: '🐇', kw: ['rabbit', 'hare', 'bunny', 'angora'] },
+  ];
+
+  // Global state
+  let model = null;
+  let correct = 0;
+  let wrong = 0;
+  let confs = []; // Store confidence percentages
+
+  // DOM Elements
+  const runBtn = document.getElementById('run-btn');
+  const rlbl = document.getElementById('rlbl');
+  const statusEl = document.getElementById('status');
+  const stxt = document.getElementById('stxt');
+  const pfill = document.getElementById('pfill');
+  const grid = document.getElementById('grid');
+  const summary = document.getElementById('summary');
+
+  // Initialize the UI by rendering the image cards
+  IMGS.forEach((img, i) => {
+    const card = document.createElement('div');
+    card.className = 'img-card';
+    card.id = `card-${i}`;
+    
+    card.innerHTML = `
+      <div class="thumb">
+        <img src="${img.url}" crossorigin="anonymous" id="img-${i}" alt="${img.label}"/>
+        <div class="idx">#${i + 1}</div>
+        <div class="rbadge" id="badge-${i}"></div>
+        <div class="scan-ov" id="scan-${i}">
+          <div class="sline"></div>
+          <span class="stxt">ANALYZING</span>
+        </div>
+      </div>
+      <div class="cbody">
+        <div class="arow">
+          <div class="aname"><span>${img.emoji}</span>${img.label}</div>
+          <div class="tlbl">Ground truth</div>
+        </div>
+        <div class="preds" id="preds-${i}">
+          <div class="skel"></div>
+          <div class="skel" style="opacity:.6"></div>
+          <div class="skel" style="opacity:.35"></div>
+        </div>
+        <div class="verdict" id="verdict-${i}"></div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Load the MobileNet Model on page load
+  (async () => {
+    setStatus('loading', 'Loading MobileNet model…');
+    animProg(0, 85, 2500); // Simulate initial loading progress
+    
+    try {
+      model = await mobilenet.load({ version: 2, alpha: 1.0 });
+      pfill.style.width = '100%';
+      
+      setTimeout(() => {
+        setStatus('ready', 'Model ready — click Run All Tests');
+        runBtn.disabled = false;
+        rlbl.textContent = '▶  Run All Tests';
+      }, 300);
+      
+    } catch (e) {
+      setStatus('error', 'Failed to load model');
+      console.error(e);
+    }
+  })();
+
+  // Main evaluation logic
+  runBtn.addEventListener('click', async () => {
+    if (!model) return;
+    
+    // Reset state
+    runBtn.disabled = true;
+    rlbl.textContent = 'Running…';
+    correct = 0;
+    wrong = 0;
+    confs = [];
+    updateScore();
+    summary.classList.remove('show');
+    setStatus('loading', `Testing 0 / ${IMGS.length}…`);
+    pfill.style.width = '0%';
+    
+    // Reset UI cards
+    IMGS.forEach((_, i) => {
+      document.getElementById(`card-${i}`).className = 'img-card';
+      const badge = document.getElementById(`badge-${i}`);
+      badge.className = 'rbadge';
+      badge.textContent = '';
+      
+      document.getElementById(`preds-${i}`).innerHTML = `
+        <div class="skel"></div>
+        <div class="skel" style="opacity:.6"></div>
+        <div class="skel" style="opacity:.35"></div>
+      `;
+      document.getElementById(`verdict-${i}`).className = 'verdict';
+    });
+
+    // Process images sequentially
+    for (let i = 0; i < IMGS.length; i++) {
+      setStatus('loading', `Testing image ${i + 1} / ${IMGS.length}…`);
+      pfill.style.width = ((i / IMGS.length) * 100) + '%';
+      
+      // Show scanning animation
+      document.getElementById(`scan-${i}`).classList.add('active');
+      await sleep(400); // Artificial delay for visual feedback
+      
+      try {
+        const imageElement = document.getElementById(`img-${i}`);
+        const predictions = await model.classify(imageElement, 3);
+        
+        document.getElementById(`scan-${i}`).classList.remove('active');
+        renderCard(i, predictions);
+      } catch (e) {
+        console.error(`Error classifying image ${i}:`, e);
+        document.getElementById(`scan-${i}`).classList.remove('active');
+      }
+      
+      await sleep(150); // Small pause between images
+    }
+
+    // Finish tests
+    pfill.style.width = '100%';
+    const accuracy = Math.round((correct / IMGS.length) * 100);
+    setStatus('done', `Done! ${correct}/${IMGS.length} correct · Accuracy: ${accuracy}%`);
+    showSummary();
+    
+    runBtn.disabled = false;
+    rlbl.textContent = '↺  Run Again';
+  });
+
+  // Render individual card results
+  function renderCard(index, predictions) {
+    const imgData = IMGS[index];
+    
+    // Check if any of the predictions contain a keyword associated with our ground truth label
+    const isCorrect = predictions.some(pred => {
+      const classNameLower = pred.className.toLowerCase();
+      return imgData.kw.some(keyword => classNameLower.includes(keyword));
+    });
+    
+    confs.push(predictions[0].probability * 100);
+    
+    if (isCorrect) correct++;
+    else wrong++;
+    
+    updateScore();
+    
+    const predsDiv = document.getElementById(`preds-${index}`);
+    predsDiv.innerHTML = '';
+    
+    // Render prediction progress bars
+    predictions.forEach((pred, rank) => {
+      const percentage = (pred.probability * 100).toFixed(1);
+      const name = pred.className.split(',')[0].trim();
+      
+      const row = document.createElement('div');
+      row.className = 'prow';
+      row.innerHTML = `
+        <div class="ptop">
+          <span class="pname ${rank === 0 ? 'r1' : ''}">#${rank + 1} ${name}</span>
+          <span class="ppct">${percentage}%</span>
+        </div>
+        <div class="ptrack">
+          <div class="pfillb" data-w="${percentage}"></div>
+        </div>
+      `;
+      predsDiv.appendChild(row);
+      
+      // Animate the progress bars filling up
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          row.classList.add('show');
+          row.querySelector('.pfillb').style.width = percentage + '%';
+        }, rank * 80);
+      });
+    });
+    
+    // Display verdict text and badge
+    const topPredictionName = predictions[0].className.split(',')[0].trim();
+    const verdictEl = document.getElementById(`verdict-${index}`);
+    
+    verdictEl.className = `verdict show ${isCorrect ? 'correct' : 'wrong'}`;
+    verdictEl.textContent = isCorrect 
+      ? `✓ Correct — "${topPredictionName}"` 
+      : `✗ Wrong — got "${topPredictionName}", expected ${imgData.label}`;
+      
+    document.getElementById(`card-${index}`).className = `img-card ${isCorrect ? 'correct' : 'wrong'}`;
+    
+    const badge = document.getElementById(`badge-${index}`);
+    badge.className = `rbadge show ${isCorrect ? 'correct' : 'wrong'}`;
+    badge.textContent = isCorrect ? '✓' : '✗';
+  }
+
+  // Populate and show the final summary box
+  function showSummary() {
+    const total = IMGS.length;
+    const accuracy = Math.round((correct / total) * 100);
+    const avgConfidence = (confs.reduce((acc, val) => acc + val, 0) / confs.length).toFixed(1);
+    
+    document.getElementById('s-c').textContent = correct;
+    document.getElementById('s-w').textContent = wrong;
+    document.getElementById('s-a').textContent = accuracy + '%';
+    document.getElementById('s-f').textContent = avgConfidence + '%';
+    
+    summary.classList.add('show');
+  }
+
+  // Update the top header scores
+  function updateScore() {
+    document.getElementById('sc-c').textContent = correct;
+    document.getElementById('sc-w').textContent = wrong;
+    
+    const totalTested = correct + wrong;
+    document.getElementById('sc-a').textContent = totalTested > 0 
+      ? Math.round((correct / totalTested) * 100) + '%' 
+      : '–';
+  }
+
+  // Helper to update the top status bar
+  function setStatus(statusClass, messageText) {
+    statusEl.className = 'status ' + statusClass;
+    stxt.textContent = messageText;
+  }
+
+  // Helper to animate the main progress bar
+  function animProg(fromPercent, toPercent, durationMs) {
+    const start = performance.now();
+    
+    function step(now) {
+      const progress = Math.min((now - start) / durationMs, 1);
+      const currentWidth = fromPercent + (toPercent - fromPercent) * progress;
+      pfill.style.width = currentWidth + '%';
+      
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Utility to pause execution
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+</script>
+</body>
+</html>

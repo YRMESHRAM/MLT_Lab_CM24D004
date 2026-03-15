@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Object Detection</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#fff; font-family:'Inter',sans-serif; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px; border-bottom:1px solid #1a1a1a; flex-shrink:0;
+}
+.logo { font-size:1rem; font-weight:600; }
+.logo span { opacity:0.35; font-weight:400; }
+.header-right { display:flex; align-items:center; gap:12px; }
+.status { display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#444; }
+.dot { width:6px; height:6px; border-radius:50%; background:#222; transition:all 0.3s; }
+.dot.live { background:#4ade80; box-shadow:0 0 6px #4ade80; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+#cam-btn {
+  padding:7px 18px; background:#fff; color:#000;
+  border:none; border-radius:6px;
+  font-family:'Inter',sans-serif; font-size:0.78rem; font-weight:600;
+  cursor:pointer; transition:all 0.15s;
+}
+#cam-btn:hover { background:#ddd; }
+#cam-btn:disabled { background:#1a1a1a; color:#444; cursor:not-allowed; }
+#cam-btn.off { background:#000; color:#ef4444; border:1px solid #2a2a2a; }
+#cam-btn.off:hover { background:#1a0000; }
+
+.layout { flex:1; display:grid; grid-template-columns:1fr 320px; overflow:hidden; }
+
+.video-wrap {
+  position:relative; background:#000;
+  display:flex; align-items:center; justify-content:center;
+  border-right:1px solid #1a1a1a; overflow:hidden;
+}
+video { width:640px; height:480px; display:block; }
+#hud {
+  position:absolute;
+  top:50%; left:50%; transform:translate(-50%,-50%);
+  width:640px; height:480px;
+  pointer-events:none; z-index:5;
+}
+#fps-tag {
+  position:absolute; top:12px; right:12px;
+  font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#333;
+  background:rgba(0,0,0,0.55); padding:3px 8px; border-radius:4px;
+  pointer-events:none; z-index:6;
+}
+#idle {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  background:#000; transition:opacity 0.3s; z-index:10;
+}
+#idle.hidden { opacity:0; pointer-events:none; }
+#idle-msg { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#444; letter-spacing:2px; }
+.spinner { width:24px; height:24px; border:2px solid #1a1a1a; border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; }
+.spinner.hide { display:none; }
+@keyframes spin { to{ transform:rotate(360deg); } }
+
+/* SIDEBAR */
+.sidebar { background:#000; display:flex; flex-direction:column; overflow:hidden; }
+.panel { border-bottom:1px solid #1a1a1a; padding:14px 16px; }
+.panel-title { font-family:'JetBrains Mono',monospace; font-size:0.58rem; color:#444; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px; }
+
+.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.stat { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:6px; padding:10px; text-align:center; }
+.stat-n { font-family:'JetBrains Mono',monospace; font-size:1.3rem; color:#fff; line-height:1; }
+.stat-l { font-size:0.58rem; color:#444; margin-top:4px; letter-spacing:1px; }
+
+.det-list { flex:1; overflow-y:auto; padding:12px 16px; scrollbar-width:thin; scrollbar-color:#1a1a1a #000; }
+.det-item {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 0; border-bottom:1px solid #0f0f0f;
+  animation:fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(-3px)} to{opacity:1;transform:none} }
+.det-emoji { font-size:1rem; width:22px; text-align:center; flex-shrink:0; }
+.det-info { flex:1; min-width:0; }
+.det-name { font-size:0.8rem; font-weight:500; color:#ccc; text-transform:capitalize; }
+.det-bar { height:2px; background:#111; border-radius:1px; margin-top:4px; }
+.det-fill { height:100%; border-radius:1px; background:#fff; transition:width 0.2s; }
+.det-pct { font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#555; flex-shrink:0; }
+.empty { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#333; text-align:center; padding:28px 0; }
+
+.log { border-top:1px solid #1a1a1a; padding:8px 16px; max-height:80px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#1a1a1a #000; flex-shrink:0; }
+.log-row { font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#333; padding:1px 0; }
+.log-row b { color:#555; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">coco<span>-ssd</span></div>
+  <div class="header-right">
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <span id="status-txt">loading model</span>
+    </div>
+    <button id="cam-btn" disabled>Enable Camera</button>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="video-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="hud"></canvas>
+    <div id="fps-tag">— fps</div>
+    <div id="idle">
+      <div class="spinner" id="spinner"></div>
+      <div id="idle-msg">LOADING MODEL</div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Stats</div>
+      <div class="stats">
+        <div class="stat"><div class="stat-n" id="s-obj">0</div><div class="stat-l">OBJECTS</div></div>
+        <div class="stat"><div class="stat-n" id="s-cls">0</div><div class="stat-l">CLASSES</div></div>
+        <div class="stat"><div class="stat-n" id="s-fps">0</div><div class="stat-l">FPS</div></div>
+      </div>
+    </div>
+    <div class="panel" style="padding-bottom:6px;">
+      <div class="panel-title">Detected Objects</div>
+    </div>
+    <div class="det-list" id="det-list"><div class="empty">no signal</div></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const video     = document.getElementById('video');
+const hud       = document.getElementById('hud');
+const hctx      = hud.getContext('2d');
+const camBtn    = document.getElementById('cam-btn');
+const dot       = document.getElementById('dot');
+const statusTxt = document.getElementById('status-txt');
+const idle      = document.getElementById('idle');
+const idleMsg   = document.getElementById('idle-msg');
+const spinner   = document.getElementById('spinner');
+const fpsTg     = document.getElementById('fps-tag');
+const detList   = document.getElementById('det-list');
+const logEl     = document.getElementById('log');
+
+hud.width = 640; hud.height = 480;
+
+let model = null, stream = null, running = false, rafId = null;
+let fpsCount = 0, fpsLast = performance.now(), fps = 0;
+
+const ICONS = {
+  person:'🧑',bicycle:'🚲',car:'🚗',motorcycle:'🏍️',airplane:'✈️',bus:'🚌',
+  train:'🚆',truck:'🚛',boat:'⛵','traffic light':'🚦','fire hydrant':'🚒',
+  'stop sign':'🛑',bench:'🪑',bird:'🐦',cat:'🐱',dog:'🐶',horse:'🐴',
+  cow:'🐄',elephant:'🐘',bear:'🐻',zebra:'🦓',giraffe:'🦒',backpack:'🎒',
+  umbrella:'☂️',handbag:'👜',tie:'👔',suitcase:'🧳','sports ball':'⚽',
+  kite:'🪁',skateboard:'🛹','tennis racket':'🎾',bottle:'🍾','wine glass':'🍷',
+  cup:'☕',fork:'🍴',knife:'🔪',spoon:'🥄',bowl:'🥣',banana:'🍌',apple:'🍎',
+  sandwich:'🥪',orange:'🍊',broccoli:'🥦',carrot:'🥕','hot dog':'🌭',
+  pizza:'🍕',donut:'🍩',cake:'🎂',chair:'🪑',couch:'🛋️','potted plant':'🪴',
+  bed:'🛏️','dining table':'🪵',toilet:'🚽',tv:'📺',laptop:'💻',mouse:'🖱️',
+  remote:'📱',keyboard:'⌨️','cell phone':'📱',microwave:'📡',oven:'🔥',
+  toaster:'🍞',sink:'🚿',refrigerator:'❄️',book:'📖',clock:'🕐',vase:'💐',
+  scissors:'✂️','teddy bear':'🧸',toothbrush:'🪥'
+};
+
+// ── Load COCO-SSD ──
+cocoSsd.load().then(m => {
+  model = m;
+  spinner.classList.add('hide');
+  idleMsg.textContent = 'CAMERA OFF';
+  statusTxt.textContent = 'ready';
+  camBtn.disabled = false;
+  addLog('COCO-SSD loaded');
+}).catch(() => {
+  idleMsg.textContent = 'MODEL LOAD FAILED';
+});
+
+// ── Camera toggle ──
+camBtn.addEventListener('click', () => running ? stopCam() : startCam());
+
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480 } });
+    video.srcObject = stream;
+    video.onloadeddata = () => {
+      running = true;
+      idle.classList.add('hidden');
+      dot.classList.add('live');
+      statusTxt.textContent = 'live';
+      camBtn.textContent = 'Disable Camera';
+      camBtn.classList.add('off');
+      addLog('Camera enabled');
+      detectLoop();
+    };
+  } catch(e) {
+    idleMsg.textContent = 'ACCESS DENIED';
+    addLog('Camera denied');
+  }
+}
+
+function stopCam() {
+  running = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  hctx.clearRect(0, 0, hud.width, hud.height);
+  idle.classList.remove('hidden');
+  idleMsg.textContent = 'CAMERA OFF';
+  dot.classList.remove('live');
+  statusTxt.textContent = 'standby';
+  camBtn.textContent = 'Enable Camera';
+  camBtn.classList.remove('off');
+  detList.innerHTML = '<div class="empty">no signal</div>';
+  document.getElementById('s-obj').textContent = '0';
+  document.getElementById('s-cls').textContent = '0';
+  document.getElementById('s-fps').textContent = '0';
+  fpsTg.textContent = '— fps';
+  addLog('Camera disabled');
+}
+
+// ── Detect loop ──
+async function detectLoop() {
+  if (!running) return;
+  const preds = await model.detect(video);
+
+  fpsCount++;
+  const now = performance.now();
+  if (now - fpsLast > 700) {
+    fps = Math.round(fpsCount / ((now - fpsLast) / 1000));
+    fpsCount = 0; fpsLast = now;
+    fpsTg.textContent = `${fps} fps`;
+    document.getElementById('s-fps').textContent = fps;
+  }
+
+  document.getElementById('s-obj').textContent = preds.length;
+  document.getElementById('s-cls').textContent = new Set(preds.map(p => p.class)).size;
+
+  drawHUD(preds);
+  updateSidebar(preds);
+  rafId = requestAnimationFrame(detectLoop);
+}
+
+// ── HUD: bounding boxes + labels on canvas ──
+function drawHUD(preds) {
+  hctx.clearRect(0, 0, hud.width, hud.height);
+
+  // scale from video intrinsic → canvas display size
+  const sx = hud.width  / (video.videoWidth  || 640);
+  const sy = hud.height / (video.videoHeight || 480);
+
+  // corner brackets
+  hctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  hctx.lineWidth = 1.5;
+  const bk = 20;
+  [[0,0,1,1],[hud.width,0,-1,1],[0,hud.height,1,-1],[hud.width,hud.height,-1,-1]]
+    .forEach(([x,y,dx,dy]) => {
+      hctx.beginPath();
+      hctx.moveTo(x+dx*bk, y); hctx.lineTo(x,y); hctx.lineTo(x, y+dy*bk);
+      hctx.stroke();
+    });
+
+  preds.forEach(p => {
+    let [bx, by, bw, bh] = p.bbox;
+    bx *= sx; by *= sy; bw *= sx; bh *= sy;
+
+    const conf  = Math.round(p.score * 100);
+    const label = `${p.class}  ${conf}%`;
+
+    // box fill
+    hctx.fillStyle = 'rgba(255,255,255,0.05)';
+    hctx.fillRect(bx, by, bw, bh);
+
+    // box border
+    hctx.strokeStyle = '#fff';
+    hctx.lineWidth = 1.5;
+    hctx.strokeRect(bx, by, bw, bh);
+
+    // corner ticks
+    const tk = 10;
+    hctx.lineWidth = 2.5;
+    [
+      [bx,by,1,1],[bx+bw,by,-1,1],
+      [bx,by+bh,1,-1],[bx+bw,by+bh,-1,-1]
+    ].forEach(([cx,cy,dx,dy]) => {
+      hctx.beginPath();
+      hctx.moveTo(cx+dx*tk, cy); hctx.lineTo(cx,cy); hctx.lineTo(cx, cy+dy*tk);
+      hctx.stroke();
+    });
+
+    // label bg
+    hctx.font = 'bold 11px "JetBrains Mono", monospace';
+    const tw  = hctx.measureText(label).width + 12;
+    const ly  = by >= 20 ? by : by + bh + 18;
+    hctx.fillStyle = '#fff';
+    roundRect(hctx, bx, ly - 16, tw, 17, 3);
+    hctx.fill();
+
+    // label text
+    hctx.fillStyle = '#000';
+    hctx.fillText(label, bx + 6, ly - 4);
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// ── Sidebar list ──
+let lastClasses = '';
+function updateSidebar(preds) {
+  const sorted = [...preds].sort((a,b) => b.score - a.score);
+  if (!sorted.length) {
+    detList.innerHTML = '<div class="empty">no objects detected</div>';
+    return;
+  }
+  detList.innerHTML = sorted.map(p => {
+    const conf = Math.round(p.score * 100);
+    return `<div class="det-item">
+      <span class="det-emoji">${ICONS[p.class]||'📦'}</span>
+      <div class="det-info">
+        <div class="det-name">${p.class}</div>
+        <div class="det-bar"><div class="det-fill" style="width:${conf}%"></div></div>
+      </div>
+      <span class="det-pct">${conf}%</span>
+    </div>`;
+  }).join('');
+
+  const classes = sorted.map(p=>p.class).join(',');
+  if (classes !== lastClasses) {
+    lastClasses = classes;
+    const names = [...new Set(sorted.map(p=>p.class))].join(', ');
+    addLog(`Detected: ${names}`);
+  }
+}
+
+function addLog(msg) {
+  const t  = new Date();
+  const ts = [t.getHours(),t.getMinutes(),t.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `<b>[${ts}]</b> ${msg}`;
+  logEl.prepend(row);
+  while (logEl.children.length > 15) logEl.removeChild(logEl.lastChild);
+}
+</script>
+</body>
+</html>

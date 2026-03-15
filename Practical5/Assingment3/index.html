@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>COCO-SSD Detector</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#fff; font-family:'Inter',sans-serif; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px; border-bottom:1px solid #1a1a1a; flex-shrink:0;
+}
+.logo { font-size:1rem; font-weight:600; }
+.logo span { opacity:0.35; font-weight:400; }
+.header-right { display:flex; align-items:center; gap:12px; }
+.status { display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#444; }
+.dot { width:6px; height:6px; border-radius:50%; background:#222; transition:all 0.3s; }
+.dot.live { background:#4ade80; box-shadow:0 0 6px #4ade80; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+#cam-btn {
+  padding:7px 18px; background:#fff; color:#000;
+  border:none; border-radius:6px;
+  font-family:'Inter',sans-serif; font-size:0.78rem; font-weight:600;
+  cursor:pointer; transition:all 0.15s;
+}
+#cam-btn:hover { background:#ddd; }
+#cam-btn:disabled { background:#1a1a1a; color:#444; cursor:not-allowed; }
+#cam-btn.off { background:#000; color:#ef4444; border:1px solid #2a2a2a; }
+#cam-btn.off:hover { background:#1a0000; }
+
+/* LAYOUT */
+.layout { flex:1; display:grid; grid-template-columns:1fr 320px; overflow:hidden; }
+
+/* VIDEO */
+.video-wrap {
+  position:relative; background:#000;
+  display:flex; align-items:center; justify-content:center;
+  border-right:1px solid #1a1a1a; overflow:hidden;
+}
+video { width:640px; height:480px; display:block; }
+#hud {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  width:640px; height:480px;
+  pointer-events:none; z-index:5;
+}
+#idle {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  background:#000; transition:opacity 0.3s; z-index:10;
+}
+#idle.hidden { opacity:0; pointer-events:none; }
+#idle-msg { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#444; letter-spacing:2px; }
+.spinner { width:24px; height:24px; border:2px solid #1a1a1a; border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; }
+.spinner.hide { display:none; }
+@keyframes spin { to{ transform:rotate(360deg); } }
+
+/* SIDEBAR */
+.sidebar { background:#000; display:flex; flex-direction:column; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#1a1a1a #000; }
+.panel { border-bottom:1px solid #1a1a1a; padding:14px 16px; flex-shrink:0; }
+.panel-title {
+  font-family:'JetBrains Mono',monospace; font-size:0.58rem;
+  color:#444; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px;
+}
+
+/* STAT GRID */
+.stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.stat { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:6px; padding:10px; text-align:center; }
+.stat-n { font-family:'JetBrains Mono',monospace; font-size:1.2rem; color:#fff; line-height:1; }
+.stat-l { font-size:0.55rem; color:#444; margin-top:4px; letter-spacing:1px; }
+
+/* PERF PANEL */
+.perf-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid #0a0a0a; }
+.perf-row:last-child { border-bottom:none; }
+.perf-key { font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#444; }
+.perf-val { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#ccc; }
+.perf-val.good { color:#4ade80; }
+.perf-val.warn { color:#fbbf24; }
+.perf-val.bad  { color:#ef4444; }
+
+/* HEALTH BAR */
+.health-wrap { margin-top:10px; }
+.health-label { display:flex; justify-content:space-between; margin-bottom:5px; }
+.health-tag { font-family:'JetBrains Mono',monospace; font-size:0.58rem; color:#444; }
+.health-status { font-family:'JetBrains Mono',monospace; font-size:0.58rem; }
+.health-track { height:3px; background:#111; border-radius:2px; overflow:hidden; }
+.health-fill { height:100%; border-radius:2px; transition:width 0.4s, background 0.4s; background:#4ade80; }
+
+/* SPARKLINE */
+.spark-wrap { margin-top:12px; }
+.spark-label { font-family:'JetBrains Mono',monospace; font-size:0.58rem; color:#444; margin-bottom:6px; }
+#spark { width:100%; height:44px; display:block; }
+
+/* INFERENCE BREAKDOWN */
+.breakdown { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:0; }
+.bd-card { background:#0a0a0a; border:1px solid #1a1a1a; border-radius:6px; padding:8px 10px; }
+.bd-val { font-family:'JetBrains Mono',monospace; font-size:1rem; color:#fff; }
+.bd-sub { font-size:0.55rem; color:#444; margin-top:3px; letter-spacing:1px; }
+
+/* DETECTIONS */
+.det-list { flex:1; overflow-y:auto; padding:12px 16px; scrollbar-width:thin; scrollbar-color:#1a1a1a #000; }
+.det-item {
+  display:flex; align-items:center; gap:8px;
+  padding:8px 0; border-bottom:1px solid #0f0f0f;
+  animation:fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(-3px)} to{opacity:1;transform:none} }
+.det-emoji { font-size:1rem; width:22px; text-align:center; flex-shrink:0; }
+.det-info { flex:1; min-width:0; }
+.det-name { font-size:0.78rem; font-weight:500; color:#ccc; text-transform:capitalize; }
+.det-bar { height:2px; background:#111; border-radius:1px; margin-top:4px; }
+.det-fill { height:100%; border-radius:1px; background:#fff; transition:width 0.2s; }
+.det-pct { font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#555; flex-shrink:0; }
+.empty { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#333; text-align:center; padding:24px 0; }
+
+/* LOG */
+.log { border-top:1px solid #1a1a1a; padding:8px 16px; max-height:76px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#1a1a1a #000; flex-shrink:0; }
+.log-row { font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#333; padding:1px 0; }
+.log-row b { color:#555; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">coco<span>-ssd</span></div>
+  <div class="header-right">
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <span id="status-txt">loading model</span>
+    </div>
+    <button id="cam-btn" disabled>Enable Camera</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- VIDEO -->
+  <div class="video-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="hud"></canvas>
+    <div id="idle">
+      <div class="spinner" id="spinner"></div>
+      <div id="idle-msg">LOADING MODEL</div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Live stats -->
+    <div class="panel">
+      <div class="panel-title">Live Stats</div>
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-n" id="s-fps">0</div><div class="stat-l">FPS</div></div>
+        <div class="stat"><div class="stat-n" id="s-obj">0</div><div class="stat-l">OBJECTS</div></div>
+        <div class="stat"><div class="stat-n" id="s-frames">0</div><div class="stat-l">FRAMES</div></div>
+      </div>
+    </div>
+
+    <!-- Performance analysis -->
+    <div class="panel">
+      <div class="panel-title">Performance</div>
+
+      <div class="perf-row">
+        <span class="perf-key">Inference time</span>
+        <span class="perf-val" id="p-inf">— ms</span>
+      </div>
+      <div class="perf-row">
+        <span class="perf-key">Avg inference</span>
+        <span class="perf-val" id="p-avg">— ms</span>
+      </div>
+      <div class="perf-row">
+        <span class="perf-key">Min / Max</span>
+        <span class="perf-val" id="p-minmax">— / — ms</span>
+      </div>
+      <div class="perf-row">
+        <span class="perf-key">Frame time</span>
+        <span class="perf-val" id="p-frame">— ms</span>
+      </div>
+      <div class="perf-row">
+        <span class="perf-key">Infer / Frame</span>
+        <span class="perf-val" id="p-ratio">—%</span>
+      </div>
+      <div class="perf-row">
+        <span class="perf-key">Dropped frames</span>
+        <span class="perf-val" id="p-drop">0</span>
+      </div>
+
+      <!-- Health bar -->
+      <div class="health-wrap">
+        <div class="health-label">
+          <span class="health-tag">PERFORMANCE HEALTH</span>
+          <span class="health-status" id="health-txt">—</span>
+        </div>
+        <div class="health-track">
+          <div class="health-fill" id="health-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- FPS Sparkline -->
+      <div class="spark-wrap">
+        <div class="spark-label">FPS HISTORY (last 60 frames)</div>
+        <canvas id="spark"></canvas>
+      </div>
+
+      <!-- Min/Max breakdown cards -->
+      <div class="breakdown" style="margin-top:10px;">
+        <div class="bd-card">
+          <div class="bd-val" id="b-peak">0</div>
+          <div class="bd-sub">PEAK FPS</div>
+        </div>
+        <div class="bd-card">
+          <div class="bd-val" id="b-low">0</div>
+          <div class="bd-sub">LOW FPS</div>
+        </div>
+        <div class="bd-card">
+          <div class="bd-val" id="b-minInf">—</div>
+          <div class="bd-sub">BEST INF</div>
+        </div>
+        <div class="bd-card">
+          <div class="bd-val" id="b-maxInf">—</div>
+          <div class="bd-sub">WORST INF</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detections -->
+    <div class="panel" style="padding-bottom:6px;">
+      <div class="panel-title">Detected Objects</div>
+    </div>
+    <div class="det-list" id="det-list"><div class="empty">no signal</div></div>
+
+    <!-- Log -->
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const video     = document.getElementById('video');
+const hud       = document.getElementById('hud');
+const hctx      = hud.getContext('2d');
+const camBtn    = document.getElementById('cam-btn');
+const dot       = document.getElementById('dot');
+const statusTxt = document.getElementById('status-txt');
+const idle      = document.getElementById('idle');
+const idleMsg   = document.getElementById('idle-msg');
+const spinner   = document.getElementById('spinner');
+const detList   = document.getElementById('det-list');
+const logEl     = document.getElementById('log');
+const sparkCanvas = document.getElementById('spark');
+const sctx      = sparkCanvas.getContext('2d');
+
+hud.width = 640; hud.height = 480;
+
+// ── Performance tracking ──
+let model = null, stream = null, running = false, rafId = null;
+
+// FPS
+let fpsCount = 0, fpsLast = performance.now(), currentFps = 0;
+const fpsHistory = [];          // rolling 60-frame fps samples
+const SPARK_MAX = 60;
+
+// Inference
+let inferSamples = [];          // all inference times
+let minInf = Infinity, maxInf = 0;
+let lastFrameStart = 0, lastFrameTime = 0;
+let droppedFrames = 0;
+let totalFrames   = 0;
+
+// ── Icons ──
+const ICONS = {
+  person:'🧑',bicycle:'🚲',car:'🚗',motorcycle:'🏍️',airplane:'✈️',bus:'🚌',
+  train:'🚆',truck:'🚛',boat:'⛵','traffic light':'🚦','fire hydrant':'🚒',
+  'stop sign':'🛑',bench:'🪑',bird:'🐦',cat:'🐱',dog:'🐶',horse:'🐴',
+  cow:'🐄',elephant:'🐘',bear:'🐻',zebra:'🦓',giraffe:'🦒',backpack:'🎒',
+  umbrella:'☂️',handbag:'👜',tie:'👔',suitcase:'🧳','sports ball':'⚽',
+  kite:'🪁',skateboard:'🛹','tennis racket':'🎾',bottle:'🍾','wine glass':'🍷',
+  cup:'☕',fork:'🍴',knife:'🔪',spoon:'🥄',bowl:'🥣',banana:'🍌',apple:'🍎',
+  sandwich:'🥪',orange:'🍊',broccoli:'🥦',carrot:'🥕','hot dog':'🌭',
+  pizza:'🍕',donut:'🍩',cake:'🎂',chair:'🪑',couch:'🛋️','potted plant':'🪴',
+  bed:'🛏️','dining table':'🪵',toilet:'🚽',tv:'📺',laptop:'💻',mouse:'🖱️',
+  remote:'📱',keyboard:'⌨️','cell phone':'📱',microwave:'📡',oven:'🔥',
+  toaster:'🍞',sink:'🚿',refrigerator:'❄️',book:'📖',clock:'🕐',vase:'💐',
+  scissors:'✂️','teddy bear':'🧸',toothbrush:'🪥'
+};
+
+// ── Load model ──
+cocoSsd.load().then(m => {
+  model = m;
+  spinner.classList.add('hide');
+  idleMsg.textContent = 'CAMERA OFF';
+  statusTxt.textContent = 'ready';
+  camBtn.disabled = false;
+  addLog('COCO-SSD loaded');
+}).catch(() => {
+  idleMsg.textContent = 'MODEL LOAD FAILED';
+  statusTxt.textContent = 'error';
+});
+
+// ── Camera toggle ──
+camBtn.addEventListener('click', () => running ? stopCam() : startCam());
+
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480 } });
+    video.srcObject = stream;
+    video.onloadeddata = () => {
+      running = true;
+      resetPerf();
+      idle.classList.add('hidden');
+      dot.classList.add('live');
+      statusTxt.textContent = 'live';
+      camBtn.textContent = 'Disable Camera';
+      camBtn.classList.add('off');
+      addLog('Camera enabled');
+      detectLoop();
+    };
+  } catch(e) {
+    idleMsg.textContent = 'ACCESS DENIED';
+    addLog('Camera denied');
+  }
+}
+
+function stopCam() {
+  running = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  hctx.clearRect(0, 0, hud.width, hud.height);
+  idle.classList.remove('hidden');
+  idleMsg.textContent = 'CAMERA OFF';
+  dot.classList.remove('live');
+  statusTxt.textContent = 'standby';
+  camBtn.textContent = 'Enable Camera';
+  camBtn.classList.remove('off');
+  detList.innerHTML = '<div class="empty">no signal</div>';
+  addLog(`Session ended — ${totalFrames} frames, avg infer: ${avgInf()}ms`);
+}
+
+function resetPerf() {
+  fpsCount = 0; fpsLast = performance.now(); currentFps = 0;
+  fpsHistory.length = 0;
+  inferSamples = []; minInf = Infinity; maxInf = 0;
+  droppedFrames = 0; totalFrames = 0;
+  lastFrameStart = performance.now();
+}
+
+// ── Detection loop ──
+async function detectLoop() {
+  if (!running) return;
+
+  const frameStart = performance.now();
+  lastFrameTime = frameStart - lastFrameStart;
+  lastFrameStart = frameStart;
+
+  // Count dropped frames (>50ms gap between frames ≈ <20fps)
+  if (totalFrames > 0 && lastFrameTime > 50) droppedFrames++;
+
+  // Inference
+  const t0    = performance.now();
+  const preds = await model.detect(video);
+  const inferMs = performance.now() - t0;
+
+  totalFrames++;
+  inferSamples.push(inferMs);
+  if (inferMs < minInf) minInf = inferMs;
+  if (inferMs > maxInf) maxInf = inferMs;
+
+  // FPS — update every 600ms
+  fpsCount++;
+  const now = performance.now();
+  if (now - fpsLast >= 600) {
+    currentFps = Math.round(fpsCount / ((now - fpsLast) / 1000));
+    fpsCount = 0; fpsLast = now;
+    fpsHistory.push(currentFps);
+    if (fpsHistory.length > SPARK_MAX) fpsHistory.shift();
+  }
+
+  updatePerfUI(inferMs);
+  drawHUD(preds);
+  updateSidebar(preds);
+  drawSparkline();
+
+  rafId = requestAnimationFrame(detectLoop);
+}
+
+function avgInf() {
+  if (!inferSamples.length) return '—';
+  return Math.round(inferSamples.reduce((a,b)=>a+b,0) / inferSamples.length);
+}
+
+// ── Update performance UI ──
+function updatePerfUI(inferMs) {
+  const avg   = avgInf();
+  const ratio = lastFrameTime > 0 ? Math.round((inferMs / lastFrameTime) * 100) : 0;
+
+  set('s-fps',     currentFps);
+  set('s-obj',     '—'); // updated by updateSidebar
+  set('s-frames',  totalFrames);
+  set('p-inf',     `${Math.round(inferMs)} ms`, inferColor(inferMs));
+  set('p-avg',     avg !== '—' ? `${avg} ms` : '—', inferColor(avg));
+  set('p-minmax',  `${Math.round(minInf)} / ${Math.round(maxInf)} ms`);
+  set('p-frame',   `${Math.round(lastFrameTime)} ms`);
+  set('p-ratio',   `${ratio}%`, ratio > 80 ? 'bad' : ratio > 50 ? 'warn' : 'good');
+  set('p-drop',    droppedFrames, droppedFrames > 10 ? 'bad' : droppedFrames > 3 ? 'warn' : 'good');
+  set('b-peak',    fpsHistory.length ? Math.max(...fpsHistory) : 0);
+  set('b-low',     fpsHistory.length ? Math.min(...fpsHistory) : 0);
+  set('b-minInf',  minInf === Infinity ? '—' : `${Math.round(minInf)}ms`);
+  set('b-maxInf',  maxInf === 0 ? '—' : `${Math.round(maxInf)}ms`);
+
+  // Health score: based on FPS vs 30 target
+  const health = Math.min(100, Math.round((currentFps / 30) * 100));
+  const fill   = document.getElementById('health-fill');
+  const htxt   = document.getElementById('health-txt');
+  fill.style.width = `${health}%`;
+  if (health >= 80) {
+    fill.style.background = '#4ade80';
+    htxt.textContent = 'GOOD'; htxt.style.color = '#4ade80';
+  } else if (health >= 50) {
+    fill.style.background = '#fbbf24';
+    htxt.textContent = 'FAIR'; htxt.style.color = '#fbbf24';
+  } else {
+    fill.style.background = '#ef4444';
+    htxt.textContent = 'POOR'; htxt.style.color = '#ef4444';
+  }
+}
+
+function inferColor(ms) {
+  if (ms === '—' || ms === Infinity) return '';
+  return ms < 80 ? 'good' : ms < 150 ? 'warn' : 'bad';
+}
+
+function set(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  if (cls !== undefined) {
+    el.className = 'perf-val ' + (cls || '');
+  }
+}
+
+// ── Sparkline ──
+function drawSparkline() {
+  const W = sparkCanvas.offsetWidth || 288;
+  const H = 44;
+  sparkCanvas.width  = W;
+  sparkCanvas.height = H;
+  sctx.clearRect(0, 0, W, H);
+
+  if (fpsHistory.length < 2) return;
+
+  const max = Math.max(...fpsHistory, 30);
+  const pts = fpsHistory.length;
+  const step = W / (SPARK_MAX - 1);
+
+  // Grid line at 30fps
+  const y30 = H - (30 / max) * H;
+  sctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  sctx.lineWidth = 1;
+  sctx.setLineDash([3,3]);
+  sctx.beginPath(); sctx.moveTo(0, y30); sctx.lineTo(W, y30); sctx.stroke();
+  sctx.setLineDash([]);
+
+  // 30fps label
+  sctx.font = '9px "JetBrains Mono", monospace';
+  sctx.fillStyle = 'rgba(255,255,255,0.2)';
+  sctx.fillText('30', W - 18, y30 - 2);
+
+  // Fill area
+  const offset = SPARK_MAX - pts;
+  sctx.beginPath();
+  fpsHistory.forEach((v, i) => {
+    const x = (offset + i) * step;
+    const y = H - (v / max) * H;
+    i === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+  });
+  sctx.lineTo((offset + pts - 1) * step, H);
+  sctx.lineTo(offset * step, H);
+  sctx.closePath();
+  sctx.fillStyle = 'rgba(255,255,255,0.05)';
+  sctx.fill();
+
+  // Line
+  sctx.beginPath();
+  fpsHistory.forEach((v, i) => {
+    const x = (offset + i) * step;
+    const y = H - (v / max) * H;
+    i === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+  });
+  sctx.strokeStyle = '#fff';
+  sctx.lineWidth = 1.5;
+  sctx.stroke();
+
+  // Current point dot
+  const lastX = (offset + pts - 1) * step;
+  const lastY = H - (fpsHistory[pts-1] / max) * H;
+  sctx.beginPath();
+  sctx.arc(lastX, lastY, 3, 0, Math.PI*2);
+  sctx.fillStyle = '#fff';
+  sctx.fill();
+}
+
+// ── Draw bounding boxes ──
+function drawHUD(preds) {
+  hctx.clearRect(0, 0, hud.width, hud.height);
+  const scaleX = hud.width  / (video.videoWidth  || 640);
+  const scaleY = hud.height / (video.videoHeight || 480);
+  const W = hud.width, H = hud.height;
+
+  // Corner brackets
+  hctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  hctx.lineWidth = 1.5;
+  const bk = 22;
+  [[0,0,1,1],[W,0,-1,1],[0,H,1,-1],[W,H,-1,-1]].forEach(([x,y,dx,dy]) => {
+    hctx.beginPath();
+    hctx.moveTo(x+dx*bk,y); hctx.lineTo(x,y); hctx.lineTo(x,y+dy*bk);
+    hctx.stroke();
+  });
+
+  preds.forEach(p => {
+    let [bx,by,bw,bh] = p.bbox;
+    bx*=scaleX; by*=scaleY; bw*=scaleX; bh*=scaleY;
+    const conf  = Math.round(p.score*100);
+    const label = `${p.class}  ${conf}%`;
+
+    hctx.fillStyle = 'rgba(255,255,255,0.04)';
+    hctx.fillRect(bx,by,bw,bh);
+    hctx.strokeStyle = '#fff'; hctx.lineWidth = 1.5;
+    hctx.strokeRect(bx,by,bw,bh);
+
+    const tk = 10; hctx.lineWidth = 2.5;
+    [[bx,by,1,1],[bx+bw,by,-1,1],[bx,by+bh,1,-1],[bx+bw,by+bh,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+      hctx.beginPath();
+      hctx.moveTo(cx+dx*tk,cy); hctx.lineTo(cx,cy); hctx.lineTo(cx,cy+dy*tk);
+      hctx.stroke();
+    });
+
+    hctx.font = 'bold 11px "JetBrains Mono", monospace';
+    const tw = hctx.measureText(label).width + 16;
+    const lh = 20;
+    const ly = by >= lh+4 ? by-lh-2 : by+bh+4;
+
+    hctx.fillStyle = 'rgba(0,0,0,0.75)';
+    roundRect(hctx,bx,ly,tw,lh,4); hctx.fill();
+    hctx.strokeStyle = 'rgba(255,255,255,0.25)'; hctx.lineWidth = 1;
+    roundRect(hctx,bx,ly,tw,lh,4); hctx.stroke();
+    hctx.fillStyle = '#fff';
+    hctx.fillText(label, bx+8, ly+14);
+  });
+}
+
+function roundRect(ctx,x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// ── Sidebar ──
+let lastClasses = '';
+function updateSidebar(preds) {
+  document.getElementById('s-obj').textContent = preds.length;
+  const sorted = [...preds].sort((a,b)=>b.score-a.score);
+  if (!sorted.length) { detList.innerHTML = '<div class="empty">no objects detected</div>'; return; }
+  detList.innerHTML = sorted.map(p => {
+    const conf = Math.round(p.score*100);
+    return `<div class="det-item">
+      <span class="det-emoji">${ICONS[p.class]||'📦'}</span>
+      <div class="det-info">
+        <div class="det-name">${p.class}</div>
+        <div class="det-bar"><div class="det-fill" style="width:${conf}%"></div></div>
+      </div>
+      <span class="det-pct">${conf}%</span>
+    </div>`;
+  }).join('');
+  const classes = sorted.map(p=>p.class).join(',');
+  if (classes !== lastClasses) {
+    lastClasses = classes;
+    addLog(`Detected: ${[...new Set(sorted.map(p=>p.class))].join(', ')}`);
+  }
+}
+
+function addLog(msg) {
+  const t  = new Date();
+  const ts = [t.getHours(),t.getMinutes(),t.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `<b>[${ts}]</b> ${msg}`;
+  logEl.prepend(row);
+  while (logEl.children.length > 15) logEl.removeChild(logEl.lastChild);
+}
+</script>
+</body>
+</html>
