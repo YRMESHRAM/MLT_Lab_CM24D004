@@ -42,10 +42,11 @@ Click on the links below to explore each lab experiment.
 | Folder | Description | Link |
 |------|-------------|------|
 | 📁 **Prelab** | Introduction to Machine Learning concepts and TensorFlow.js environment setup | [Explore Prelab](./Prelab) |
-| 📁 **Practical1** | Implementation of **Linear Regression** using TensorFlow.js | [Explore Practical 1](./Practical1) |
-| 📁 **Practical2** | **Digit Recognition using MNIST Dataset** with CNN | [Explore Practical 2](./Practical2) |
-| 📁 **Practical3** | **Text Sentiment Analysis** using RNN / Pre-trained model | [Explore Practical 3](./Practical3) |
-
+| 📁 **Practical 1** | Implementation of **Linear Regression** using TensorFlow.js | [Explore Practical 1](./Practical1) |
+| 📁 **Practical 2** | **Digit Recognition using MNIST Dataset** with CNN | [Explore Practical 2](./Practical2) |
+| 📁 **Practical 3** | **Text Sentiment Analysis** using RNN / Pre-trained model | [Explore Practical 3](./Practical3) |
+| 📁 **Practical 4** | Image Classification using Pre-trained Model (MobileNet) | [Explore Practical 4](./Practical4) |
+| 📁 **Practical 5** | Webcam-based Object Detection - Realtime detection | [Explore Practical 5](./Practical5) |
 ---
 
 # 🛠️ Tech Stack
