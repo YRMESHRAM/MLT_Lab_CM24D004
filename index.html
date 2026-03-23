@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ML Tools Lab — Yash Meshram</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cream: #f5f0e8;
+  --paper: #faf7f2;
+  --warm-white: #fffef9;
+  --ink: #1a1612;
+  --ink-soft: #3d3530;
+  --ink-muted: #8a7f74;
+  --ink-faint: #c4bdb4;
+  --border: #d8d0c4;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse at 15% 0%, #ede5d5 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 100%, #ddd8cc 0%, transparent 55%);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── TOP BAR ── */
+.top-bar {
+  background: var(--ink);
+  color: var(--cream);
+  padding: 9px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.8px;
+}
+.top-bar-l { color: rgba(245,240,232,0.55); }
+.top-bar-r { display: flex; gap: 28px; color: rgba(245,240,232,0.45); }
+.top-bar-r .hi { color: #d4a843; }
+
+/* ── PAGE WRAP ── */
+.wrap { max-width: 1060px; margin: 0 auto; padding: 0 28px 100px; }
+
+/* ── HERO ── */
+.hero {
+  padding: 52px 0 40px;
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 48px;
+  align-items: start;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 52px;
+  animation: fadeUp 0.6s ease both;
+}
+
+.eyebrow {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: var(--ink);
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 20px;
+  line-height: 1.1;
+}
+.eyebrow em { font-style: italic; color: #c0392b; }
+.eyebrow::before { content:''; width:28px; height:3px; background:#c0392b; display:inline-block; flex-shrink:0; }
+
+.hero h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(3rem, 5.5vw, 5rem);
+  font-weight: 900;
+  line-height: 1.0;
+  letter-spacing: -1.5px;
+  margin-bottom: 20px;
+}
+.hero h1 em { font-style: italic; color: #c0392b; }
+
+.hero-desc {
+  font-size: 0.95rem;
+  color: var(--ink-muted);
+  line-height: 1.75;
+  font-weight: 300;
+  max-width: 440px;
+}
+
+/* ── STUDENT ID CARD ── */
+.id-card {
+  background: var(--ink);
+  color: var(--cream);
+  padding: 26px 22px 22px;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+.id-card::before {
+  content: '';
+  position: absolute; top:0; left:0; right:0; height:3px;
+  background: linear-gradient(90deg, #c0392b, #d4a843);
+}
+.id-card::after {
+  content: 'ML';
+  position: absolute; bottom:-18px; right:-4px;
+  font-family: 'Playfair Display', serif;
+  font-size: 90px; font-weight: 900;
+  color: rgba(255,255,255,0.03);
+  pointer-events: none; line-height:1;
+}
+.id-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem; font-weight: 700;
+  color: #fff; margin-bottom: 6px;
+}
+.id-usn {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px; color: #d4a843;
+  background: rgba(212,168,67,0.14);
+  padding: 3px 10px; border-radius: 2px;
+  display: inline-block; margin-bottom: 18px;
+  letter-spacing: 1px;
+}
+.id-hr { height:1px; background: rgba(255,255,255,0.09); margin: 14px 0; }
+.id-row { margin-bottom: 12px; }
+.id-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px; letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: rgba(245,240,232,0.35); margin-bottom: 3px;
+}
+.id-val {
+  font-size: 0.85rem; font-weight: 500;
+  color: rgba(245,240,232,0.88); line-height: 1.3;
+}
+
+/* ── SECTION HEADING ── */
+.sec-head {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 18px;
+}
+.sec-head h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem; font-weight: 700;
+  white-space: nowrap;
+}
+.sec-line { flex:1; height:1px; background:var(--border); }
+
+/* ── PRELAB ── */
+.prelab-wrap { margin-bottom: 44px; animation: fadeUp 0.6s 0.1s ease both; }
+
+.prelab-a {
+  display: flex; align-items: center; gap: 20px;
+  padding: 20px 24px;
+  background: #1b2a4a;
+  color: var(--cream);
+  text-decoration: none;
+  border-radius: 3px;
+  border-left: 4px solid #5b8dd9;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.prelab-a:hover {
+  background: #243660;
+  transform: translateX(4px);
+  box-shadow: -4px 4px 24px rgba(27,42,74,0.22);
+}
+.prelab-badge {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(245,240,232,0.4); margin-bottom: 4px;
+}
+.prelab-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.05rem; font-weight: 700;
+}
+.prelab-sub {
+  font-size: 0.78rem; color: rgba(245,240,232,0.5); margin-top: 2px;
+}
+.arr { font-size: 18px; color: rgba(245,240,232,0.3); margin-left: auto; transition: transform 0.2s, color 0.2s; }
+.prelab-a:hover .arr { transform: translateX(5px); color: #fff; }
+
+/* ── PRACTICALS ── */
+.prac-wrap { animation: fadeUp 0.6s 0.15s ease both; }
+.prac-list { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── PRACTICAL CARD ── */
+.pcard {
+  background: var(--warm-white);
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+.pcard.open {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.pcard-trigger {
+  display: flex; align-items: stretch;
+  cursor: pointer; user-select: none;
+  transition: background 0.15s;
+}
+.pcard-trigger:hover { background: #faf7ee; }
+
+.pcard-num {
+  width: 68px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border-right: 1.5px solid var(--border);
+  padding: 18px 0; flex-shrink: 0;
+  transition: background 0.25s;
+}
+.pcard.open .pcard-num { background: var(--ink); }
+
+.num-big {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.7rem; font-weight: 900;
+  color: var(--ink-faint); line-height: 1;
+  transition: color 0.25s;
+}
+.pcard.open .num-big { color: var(--cream); }
+
+.num-small {
+  font-family: 'DM Mono', monospace;
+  font-size: 7px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-faint); margin-top: 4px;
+  transition: color 0.25s;
+}
+.pcard.open .num-small { color: rgba(245,240,232,0.35); }
+
+.pcard-body { flex:1; padding: 16px 20px; }
+.pcard-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-muted); margin-bottom: 5px;
+}
+.pcard-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.05rem; font-weight: 700;
+  color: var(--ink); margin-bottom: 4px;
+}
+.pcard-desc {
+  font-size: 0.78rem; color: var(--ink-muted); line-height: 1.5;
+}
+
+.pcard-caret {
+  padding: 0 20px;
+  display: flex; align-items: center; justify-content: center;
+}
+.caret-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-muted); font-size: 12px;
+  transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), background 0.2s, border-color 0.2s, color 0.2s;
+}
+.pcard.open .caret-icon {
+  transform: rotate(180deg);
+  background: var(--ink); border-color: var(--ink); color: var(--cream);
+}
+
+/* ── EXPANDED FILES ── */
+.pcard-panel {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+.pcard.open .pcard-panel { max-height: 460px; }
+
+.panel-inner {
+  border-top: 1.5px solid var(--border);
+  background: var(--paper);
+  padding: 18px 20px 20px;
+}
+
+.panel-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--ink-muted); margin-bottom: 12px;
+}
+
+.files-list { display: flex; flex-direction: column; gap: 7px; }
+
+.flink {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 15px;
+  text-decoration: none;
+  border-radius: 3px;
+  border: 1.5px solid transparent;
+  transition: all 0.18s;
+  color: var(--ink);
+}
+
+.flink.fmain {
+  color: #fff;
+  border-color: transparent;
+}
+
+.flink:not(.fmain) {
+  background: var(--warm-white);
+  border-color: var(--border);
+}
+.flink:not(.fmain):hover {
+  border-color: var(--ink);
+  background: var(--cream);
+  transform: translateX(3px);
+}
+
+.flink.fmain:hover {
+  filter: brightness(1.12);
+  transform: translateX(3px);
+}
+
+.ficon {
+  width: 30px; height: 30px;
+  border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.flink.fmain .ficon { background: rgba(255,255,255,0.14); }
+.flink:not(.fmain) .ficon { background: var(--cream); border: 1px solid var(--border); }
+
+.ftext { flex:1; }
+.fname { font-size: 0.875rem; font-weight: 600; display: block; }
+.fsub  {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  display: block; margin-top: 1px;
+}
+.flink.fmain .fsub  { color: rgba(255,255,255,0.4); }
+.flink:not(.fmain) .fsub { color: var(--ink-muted); }
+
+.farr { font-size: 13px; transition: transform 0.18s, color 0.18s; }
+.flink.fmain .farr  { color: rgba(255,255,255,0.35); }
+.flink:not(.fmain) .farr { color: var(--ink-faint); }
+.flink:hover .farr  { transform: translateX(4px); }
+.flink.fmain:hover .farr { color: #fff; }
+.flink:not(.fmain):hover .farr { color: var(--ink); }
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 80px;
+  padding-top: 22px;
+  border-top: 2px solid var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.footer-l {
+  font-family: 'Playfair Display', serif;
+  font-style: italic; font-size: 1.05rem;
+  color: var(--ink-muted);
+}
+.footer-r {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px; color: var(--ink-faint);
+  letter-spacing: 1px; text-align: right; line-height: 1.8;
+}
+
+@media (max-width: 700px) {
+  .hero { grid-template-columns: 1fr; }
+  .top-bar-r { display: none; }
+  .footer { flex-direction: column; gap: 12px; text-align: center; }
+  .footer-r { text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <span class="top-bar-l">CM24D004 · YASH MESHRAM</span>
+  <div class="top-bar-r">
+    <span>CSE (AIML)</span>
+    <span>SEM VI · 3RD YEAR</span>
+    <span class="hi">ML TOOLS LAB ◆</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Machine Learning Tools <em>Lab</em></div>
+
+      <p class="hero-desc">A complete record of practicals and assignments exploring machine learning concepts built with TensorFlow.js — from regression to real-time pose detection.</p>
+    </div>
+
+    <div class="id-card">
+      <div class="id-name">Yash Meshram</div>
+      <div class="id-usn">CM24D004</div>
+      <div class="id-hr"></div>
+      <div class="id-row">
+        <div class="id-label">Subject</div>
+        <div class="id-val">Machine Learning Tools Lab</div>
+      </div>
+      <div class="id-row">
+        <div class="id-label">Department</div>
+        <div class="id-val">CSE (AIML)</div>
+      </div>
+      <div class="id-row">
+        <div class="id-label">Semester / Year</div>
+        <div class="id-val">6th Semester · 3rd Year</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- PRACTICALS -->
+  <div class="prac-wrap">
+    <div class="sec-head">
+      <h2>Practicals</h2>
+      <div class="sec-line"></div>
+    </div>
+    <div class="prac-list" id="plist"></div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-l">"Learning by building."</div>
+    <div class="footer-r">
+      Yash Meshram · CM24D004<br/>
+      Machine Learning Tools Lab · 2025-26
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const practicals = [
+  { num:"00", tag:"Foundation · Getting Started", title:"Introduction & Environment Setup",
+    desc:"Introduction to Machine Learning concepts and TensorFlow.js environment setup",
+    color:"#2c3e50", icon:"🧪", path:"./Prelab" },
+  { num:"01", tag:"Supervised Learning", title:"Linear Regression",
+    desc:"Implementation of Linear Regression using TensorFlow.js",
+    color:"#c0392b", icon:"📈", path:"./Practical1" },
+  { num:"02", tag:"CNN · MNIST Dataset", title:"Digit Recognition",
+    desc:"Digit Recognition using MNIST Dataset with Convolutional Neural Networks",
+    color:"#1b5fa8", icon:"🔢", path:"./Practical2" },
+  { num:"03", tag:"RNN · NLP", title:"Text Sentiment Analysis",
+    desc:"Text Sentiment Analysis using RNN and a pre-trained model",
+    color:"#2d6a1f", icon:"💬", path:"./Practical3" },
+  { num:"04", tag:"Transfer Learning · MobileNet", title:"Image Classification",
+    desc:"Image Classification using the pre-trained MobileNet model",
+    color:"#8b4500", icon:"🖼️", path:"./Practical4" },
+  { num:"05", tag:"Webcam · Real-time", title:"Object Detection",
+    desc:"Webcam-based real-time Object Detection running in the browser",
+    color:"#5b2d8e", icon:"📷", path:"./Practical5" },
+  { num:"06", tag:"PoseNet · MobileNet", title:"Pose Detection",
+    desc:"Human Pose Detection using the pre-trained MobileNet / PoseNet model",
+    color:"#b5860d", icon:"🏃", path:"./Practical6" },
+  { num:"07", tag:"Deployment", title:"Deploy Model in Browser",
+    desc:"Deploying a trained Machine Learning model directly in the browser",
+    color:"#1a5c4f", icon:"🚀", path:"./Practical7" },
+  { num:"08", tag:"Fine-tuning · Images", title:"Transfer Learning",
+    desc:"Transfer Learning with Images using pre-trained feature extractors",
+    color:"#7a1a48", icon:"🔄", path:"./Practical8" },
+];
+
+const aIcons = ["📄","📋","📝"];
+const list = document.getElementById('plist');
+
+practicals.forEach((p, i) => {
+  const el = document.createElement('div');
+  el.className = 'pcard';
+  el.style.cssText = `animation: fadeUp 0.5s ${0.06*i}s ease both`;
+
+  const assignRows = [1,2,3].map((n, ai) => `
+    <a href="${p.path}/Assingment${n}/index.html" class="flink">
+      <div class="ficon">${aIcons[ai]}</div>
+      <div class="ftext">
+        <span class="fname">Assignment ${n}</span>
+        <span class="fsub">${p.path}/Assingment${n}/index.html</span>
+      </div>
+      <span class="farr">→</span>
+    </a>
+  `).join('');
+
+  const label = p.num === "00" ? "Prelab" : "Prac";
+  const panelLabel = p.num === "00" ? "Files — Prelab" : `Files — Practical ${parseInt(p.num)}`;
+  const mainLabel = p.num === "00" ? "Prelab — Main Index" : `Practical ${parseInt(p.num)} — Main Index`;
+
+  el.innerHTML = `
+    <div class="pcard-trigger" onclick="tog(this)">
+      <div class="pcard-num">
+        <div class="num-big">${p.num === "00" ? "PL" : p.num}</div>
+        <div class="num-small">${label}</div>
+      </div>
+      <div class="pcard-body">
+        <div class="pcard-tag">${p.tag}</div>
+        <div class="pcard-title">${p.icon} ${p.title}</div>
+        <div class="pcard-desc">${p.desc}</div>
+      </div>
+      <div class="pcard-caret"><div class="caret-icon">▾</div></div>
+    </div>
+    <div class="pcard-panel">
+      <div class="panel-inner">
+        <div class="panel-label">${panelLabel}</div>
+        <div class="files-list">
+          <a href="${p.path}/index.html" class="flink fmain" style="background:${p.color};border-color:${p.color}">
+            <div class="ficon">📂</div>
+            <div class="ftext">
+              <span class="fname">${mainLabel}</span>
+              <span class="fsub">${p.path}/index.html</span>
+            </div>
+            <span class="farr">→</span>
+          </a>
+          ${assignRows}
+        </div>
+      </div>
+    </div>
+  `;
+
+  list.appendChild(el);
+});
+
+function tog(trigger) {
+  const card = trigger.parentElement;
+  const wasOpen = card.classList.contains('open');
+  document.querySelectorAll('.pcard.open').forEach(c => c.classList.remove('open'));
+  if (!wasOpen) card.classList.add('open');
+}
+</script>
+</body>
+</html>
