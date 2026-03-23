@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MobileNet – Validation Accuracy & Confusion Matrix</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+
+  <style>
+    /* ── TOKENS ── */
+    :root {
+      --bg:       #0d1117;
+      --surf:     #161b22;
+      --surf2:    #1d2330;
+      --border:   #30363d;
+      --accent:   #7c3aed;
+      --accent2:  #a855f7;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --sky:      #38bdf8;
+      --yellow:   #f59e0b;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --r:        14px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{
+      font-family:'Inter',sans-serif;
+      background:var(--bg);color:var(--text);
+      min-height:100vh;padding:24px 16px 70px;
+    }
+
+    /* ── HEADER ── */
+    header{text-align:center;margin-bottom:30px}
+    header h1{
+      font-size:clamp(1.5rem,4vw,2.2rem);font-weight:700;
+      background:linear-gradient(135deg,#a78bfa,#7c3aed,#22d3ee);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    header p{color:var(--muted);font-size:.9rem;margin-top:6px}
+
+    /* ── STATUS BAR ── */
+    #status-bar{
+      max-width:900px;margin:0 auto 24px;padding:11px 18px;
+      background:var(--surf);border:1px solid var(--border);border-radius:var(--r);
+      font-size:.86rem;color:var(--muted);display:flex;align-items:center;gap:10px;
+    }
+    .dot{width:10px;height:10px;border-radius:50%;background:var(--yellow);animation:pulse 1.4s infinite;flex-shrink:0}
+    #status-bar.ready .dot{background:var(--green);animation:none}
+    #status-bar.error .dot{background:var(--red);animation:none}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* ── CONTAINER ── */
+    .wrap{max-width:900px;margin:0 auto}
+
+    /* ── CARD ── */
+    .card{
+      background:var(--surf);border:1px solid var(--border);border-radius:var(--r);
+      padding:22px;margin-bottom:18px;transition:border-color .25s;
+    }
+    .card:hover{border-color:var(--accent)}
+    .card-title{
+      font-size:.97rem;font-weight:600;display:flex;align-items:center;gap:11px;margin-bottom:18px;
+    }
+    .badge{
+      width:28px;height:28px;border-radius:50%;flex-shrink:0;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;color:#fff;
+    }
+
+    /* ── CATEGORY INPUTS ── */
+    .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .cat-grid label{font-size:.76rem;color:var(--muted);display:block;margin-bottom:4px}
+    .cat-grid input{
+      width:100%;padding:9px 12px;background:var(--bg);
+      border:1px solid var(--border);border-radius:8px;color:var(--text);
+      font-family:inherit;font-size:.88rem;transition:border-color .2s;
+    }
+    .cat-grid input:focus{outline:none;border-color:var(--accent)}
+
+    /* ── VIDEO ── */
+    .video-wrap{
+      position:relative;width:220px;height:168px;background:#000;
+      border-radius:10px;overflow:hidden;border:2px solid var(--border);flex-shrink:0;
+    }
+    .video-wrap video{width:100%;height:100%;object-fit:cover;display:block}
+    canvas{display:none}
+
+    /* ── TWO-COLUMN capture layout ── */
+    .split{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start}
+
+    /* ── CLASS ROWS ── */
+    .class-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+    .class-row:last-child{border-bottom:none}
+    .cname{min-width:90px;font-size:.88rem;font-weight:500}
+    .cbadge{
+      background:var(--accent);color:#fff;font-size:.72rem;font-weight:700;
+      padding:2px 8px;border-radius:20px;min-width:32px;text-align:center;
+    }
+    .vbadge{
+      background:#1e3a5f;color:var(--sky);font-size:.72rem;font-weight:700;
+      padding:2px 8px;border-radius:20px;min-width:32px;text-align:center;
+    }
+    .thumb-strip{display:flex;gap:4px;overflow-x:auto;max-width:260px;flex-wrap:nowrap}
+    .thumb-strip img{width:38px;height:38px;object-fit:cover;border-radius:4px;border:1px solid var(--border)}
+
+    /* ── BUTTONS ── */
+    button{
+      font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer;
+      border:none;border-radius:8px;padding:8px 16px;transition:opacity .2s,transform .1s;
+    }
+    button:active{transform:scale(.97)}
+    button:disabled{opacity:.35;cursor:not-allowed}
+    .btn-pri{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+    .btn-pri:hover:not(:disabled){opacity:.87}
+    .btn-sm{background:var(--surf2);color:var(--text);border:1px solid var(--border);padding:6px 12px;font-size:.77rem}
+    .btn-sm:hover:not(:disabled){border-color:var(--accent2)}
+    .btn-sm.val{background:#1e3a5f;color:var(--sky);border-color:#2b5c91}
+    .btn-sm.val:hover:not(:disabled){background:#1a3352}
+    .btn-danger{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+    .btn-danger:hover:not(:disabled){background:rgba(239,68,68,.22)}
+
+    /* ── ACTION ROW ── */
+    .action-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+
+    /* ── PROGRESS ── */
+    .prog-wrap{background:var(--bg);border-radius:100px;height:8px;overflow:hidden;margin-top:8px}
+    #prog-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:100px;transition:width .25s}
+    #prog-lbl{font-size:.8rem;color:var(--muted);margin-top:5px}
+
+    /* ── METRICS GRID ── */
+    .metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px}
+    .metric-card{
+      background:var(--surf2);border:1px solid var(--border);border-radius:10px;
+      padding:16px 18px;text-align:center;
+    }
+    .metric-card .val{font-size:1.8rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .metric-card .lbl{font-size:.75rem;color:var(--muted);margin-top:4px}
+
+    /* ── PER-CLASS TABLE ── */
+    .table-wrap{overflow-x:auto;margin-bottom:24px}
+    table{width:100%;border-collapse:collapse;font-size:.84rem}
+    th,td{padding:9px 14px;text-align:left;border-bottom:1px solid var(--border)}
+    th{background:var(--surf2);color:var(--muted);font-weight:600}
+    tr:last-child td{border-bottom:none}
+    .pill-good{background:rgba(34,197,94,.15);color:var(--green);border-radius:20px;padding:2px 9px;font-size:.76rem;font-weight:700}
+    .pill-ok  {background:rgba(245,158,11,.15);color:var(--yellow);border-radius:20px;padding:2px 9px;font-size:.76rem;font-weight:700}
+    .pill-bad {background:rgba(239,68,68,.15);color:var(--red);border-radius:20px;padding:2px 9px;font-size:.76rem;font-weight:700}
+
+    /* ── CONFUSION MATRIX ── */
+    #cm-container{overflow-x:auto}
+    #cm-table{border-collapse:collapse;font-size:.84rem;margin-top:8px}
+    #cm-table th,#cm-table td{padding:10px 16px;text-align:center;border:1px solid var(--border)}
+    #cm-table th{background:var(--surf2);color:var(--muted)}
+    .cm-cell{
+      font-weight:700;font-size:.95rem;border-radius:6px;
+      transition:background .4s;min-width:60px;
+    }
+    .cm-axis-label{font-weight:600;color:var(--muted);font-size:.78rem}
+    .cm-caption{font-size:.78rem;color:var(--muted);margin-top:8px;font-style:italic}
+
+    /* ── LEGEND ── */
+    .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:.78rem;color:var(--muted)}
+    .legend-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+
+    /* ── RESPONSIVE ── */
+    @media(max-width:600px){
+      .cat-grid{grid-template-columns:1fr}
+      .split{grid-template-columns:1fr}
+      .video-wrap{width:100%;height:200px}
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Validation Accuracy &amp; Confusion Matrix</h1>
+  <p>MobileNet Transfer Learning &nbsp;|&nbsp; 3 Custom Categories &nbsp;|&nbsp; In-Browser Evaluation</p>
+</header>
+
+<div id="status-bar"><span class="dot"></span><span id="status-txt">Loading TensorFlow.js &amp; MobileNet…</span></div>
+
+<div class="wrap">
+
+  <!-- STEP 1 -->
+  <div class="card">
+    <div class="card-title"><span class="badge">1</span> Define Your 3 Categories</div>
+    <div class="cat-grid">
+      <div><label>Category A</label><input id="cat0" value="Category A" placeholder="e.g. Cat"/></div>
+      <div><label>Category B</label><input id="cat1" value="Category B" placeholder="e.g. Dog"/></div>
+      <div><label>Category C</label><input id="cat2" value="Category C" placeholder="e.g. Bird"/></div>
+    </div>
+  </div>
+
+  <!-- STEP 2 – Camera + Capture -->
+  <div class="card">
+    <div class="card-title"><span class="badge">2</span> Capture Training &amp; Validation Samples</div>
+
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <span style="font-size:.82rem;color:var(--muted)">
+        <span style="color:var(--accent2);font-weight:600">■ Purple = Train</span>
+        &nbsp;&nbsp;
+        <span style="color:var(--sky);font-weight:600">■ Blue = Validation</span>
+        &nbsp;&nbsp;Min: 5 train + 3 val per class
+      </span>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="video-wrap"><video id="video" autoplay playsinline muted></video></div>
+        <canvas id="canvas" width="224" height="224"></canvas>
+        <div class="action-row">
+          <button class="btn-pri" id="cam-btn">▶ Start Camera</button>
+          <button class="btn-danger" id="clear-btn" disabled>🗑 Clear All</button>
+        </div>
+      </div>
+
+      <div id="capture-panel"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 – Train -->
+  <div class="card">
+    <div class="card-title"><span class="badge">3</span> Train the Classifier</div>
+    <div class="action-row">
+      <button class="btn-pri" id="train-btn" disabled>⚡ Train Model</button>
+      <span style="font-size:.8rem;color:var(--muted)">30 Epochs · Dense head · Adam · L2 + Dropout</span>
+    </div>
+    <div class="prog-wrap" style="margin-top:12px"><div id="prog-bar"></div></div>
+    <div id="prog-lbl">–</div>
+  </div>
+
+  <!-- STEP 4 – Results -->
+  <div class="card" id="results-card" style="display:none">
+    <div class="card-title"><span class="badge">4</span> Evaluation Results on Validation Set</div>
+
+    <!-- KPI metrics -->
+    <div class="metrics-grid" id="kpi-grid"></div>
+
+    <!-- Per-Class Table -->
+    <h3 style="font-size:.9rem;font-weight:600;margin-bottom:10px;color:var(--muted)">Per-Class Metrics</h3>
+    <div class="table-wrap">
+      <table id="per-class-table">
+        <thead>
+          <tr>
+            <th>Class</th>
+            <th>Actual Samples</th>
+            <th>Correct</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>F1 Score</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Confusion Matrix -->
+    <h3 style="font-size:.9rem;font-weight:600;margin-bottom:6px;color:var(--muted)">Confusion Matrix</h3>
+    <div id="cm-container"></div>
+    <p class="cm-caption">Rows = Actual class &nbsp;|&nbsp; Columns = Predicted class &nbsp;|&nbsp; Diagonal = correct classifications</p>
+
+    <!-- Color Legend -->
+    <div class="legend" id="cm-legend"></div>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ════════════════════════════════════════════════
+   CONSTANTS & STATE
+════════════════════════════════════════════════ */
+const NC = 3, EPOCHS = 30, IMG = 224;
+let mnet = null, classifier = null, trained = false, camStream = null;
+
+const train = {xs:[], ys:[]};
+const val   = {xs:[], ys:[]};
+const tCnt  = [0,0,0];
+const vCnt  = [0,0,0];
+
+/* ════════════════════════════════════════════════
+   DOM HELPERS
+════════════════════════════════════════════════ */
+const $  = id => document.getElementById(id);
+const setStatus = (msg, state='') => {
+  $('status-txt').textContent = msg;
+  $('status-bar').className = state;
+};
+const getCat = i => $('cat'+i).value.trim() || `Class ${String.fromCharCode(65+i)}`;
+
+/* ════════════════════════════════════════════════
+   BUILD CAPTURE UI
+════════════════════════════════════════════════ */
+function buildPanel() {
+  const panel = $('capture-panel');
+  panel.innerHTML = '';
+  for(let i=0;i<NC;i++){
+    const row = document.createElement('div');
+    row.className='class-row';
+    row.id=`row-${i}`;
+    row.innerHTML=`
+      <span class="cname" id="cn-${i}">${getCat(i)}</span>
+      <button class="btn-sm" id="tb-${i}" disabled>📷 Train</button>
+      <span class="cbadge" id="tc-${i}">0</span>
+      <button class="btn-sm val" id="vb-${i}" disabled>🔵 Val</button>
+      <span class="vbadge" id="vc-${i}">0</span>
+      <div class="thumb-strip" id="ts-${i}"></div>
+    `;
+    panel.appendChild(row);
+    $(`tb-${i}`).addEventListener('click',()=>capture(i,'train'));
+    $(`vb-${i}`).addEventListener('click',()=>capture(i,'val'));
+  }
+  // sync names
+  for(let i=0;i<NC;i++){
+    $('cat'+i).addEventListener('input',()=>{ $(`cn-${i}`).textContent=getCat(i); });
+  }
+}
+
+/* ════════════════════════════════════════════════
+   MOBILENET LOAD
+════════════════════════════════════════════════ */
+async function loadMNet(){
+  setStatus('Loading MobileNet… (first load may take ~10s)');
+  try{
+    mnet = await mobilenet.load({version:2,alpha:1.0});
+    const d=tf.zeros([1,IMG,IMG,3]); mnet.infer(d,true).dispose(); d.dispose();
+    setStatus('MobileNet ready ✔ – Start camera and capture samples.','ready');
+    $('cam-btn').disabled=false;
+  }catch(e){setStatus('Error loading MobileNet: '+e.message,'error');}
+}
+
+/* ════════════════════════════════════════════════
+   CAMERA
+════════════════════════════════════════════════ */
+$('cam-btn').addEventListener('click', async()=>{
+  if(camStream){ stopCam(); return; }
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+    $('video').srcObject = camStream;
+    $('cam-btn').textContent='⏹ Stop Camera';
+    for(let i=0;i<NC;i++){ $(`tb-${i}`).disabled=false; $(`vb-${i}`).disabled=false; }
+  }catch(e){ setStatus('Camera error: '+e.message,'error'); }
+});
+
+function stopCam(){
+  if(camStream){camStream.getTracks().forEach(t=>t.stop()); camStream=null;}
+  $('video').srcObject=null;
+  $('cam-btn').textContent='▶ Start Camera';
+  for(let i=0;i<NC;i++){ $(`tb-${i}`).disabled=true; $(`vb-${i}`).disabled=true; }
+}
+
+/* ════════════════════════════════════════════════
+   CAPTURE
+════════════════════════════════════════════════ */
+function capture(classIdx, mode){
+  if(!camStream) return;
+  const canvas=$('canvas'), ctx=canvas.getContext('2d');
+  ctx.drawImage($('video'),0,0,IMG,IMG);
+  const dataURL = canvas.toDataURL('image/jpeg',.8);
+
+  const t = tf.browser.fromPixels(canvas).expandDims(0);
+  const feat = mnet.infer(t,true);
+  t.dispose();
+
+  if(mode==='train'){ train.xs.push(feat); train.ys.push(classIdx); tCnt[classIdx]++; $(`tc-${classIdx}`).textContent=tCnt[classIdx]; }
+  else              { val.xs.push(feat);   val.ys.push(classIdx);   vCnt[classIdx]++; $(`vc-${classIdx}`).textContent=vCnt[classIdx]; }
+
+  // thumbnail
+  const strip=$(`ts-${classIdx}`);
+  const img=document.createElement('img'); img.src=dataURL; strip.appendChild(img);
+  if(strip.children.length>7) strip.removeChild(strip.firstChild);
+
+  // enable train button?
+  const ready = tCnt.every(c=>c>=5) && vCnt.every(c=>c>=3);
+  $('train-btn').disabled = !ready;
+  $('clear-btn').disabled = false;
+
+  const total = tCnt.reduce((a,b)=>a+b,0)+vCnt.reduce((a,b)=>a+b,0);
+  setStatus(`Samples – Train:[${tCnt.join(',')}]  Val:[${vCnt.join(',')}]${ready?' ✔ Ready to train!':' (need ≥5 train, ≥3 val per class)'}`, ready?'ready':'');
+}
+
+/* ════════════════════════════════════════════════
+   CLEAR
+════════════════════════════════════════════════ */
+$('clear-btn').addEventListener('click',()=>{
+  [...train.xs,...val.xs].forEach(t=>t.dispose());
+  train.xs.length=0; train.ys.length=0;
+  val.xs.length=0;   val.ys.length=0;
+  tCnt.fill(0); vCnt.fill(0);
+  for(let i=0;i<NC;i++){
+    $(`tc-${i}`).textContent='0'; $(`vc-${i}`).textContent='0';
+    $(`ts-${i}`).innerHTML='';
+  }
+  $('train-btn').disabled=true; $('clear-btn').disabled=true;
+  $('prog-bar').style.width='0%'; $('prog-lbl').textContent='–';
+  $('results-card').style.display='none';
+  trained=false;
+  setStatus('Cleared. Capture new samples.','ready');
+});
+
+/* ════════════════════════════════════════════════
+   BUILD HEAD MODEL
+════════════════════════════════════════════════ */
+function buildHead(){
+  if(classifier){classifier.dispose();classifier=null;}
+  classifier=tf.sequential();
+  classifier.add(tf.layers.dense({inputShape:[1280],units:128,activation:'relu',
+    kernelRegularizer:tf.regularizers.l2({l2:1e-4})}));
+  classifier.add(tf.layers.dropout({rate:.3}));
+  classifier.add(tf.layers.dense({units:NC,activation:'softmax'}));
+  classifier.compile({optimizer:tf.train.adam(1e-3),loss:'sparseCategoricalCrossentropy',metrics:['accuracy']});
+}
+
+/* ════════════════════════════════════════════════
+   TRAIN
+════════════════════════════════════════════════ */
+$('train-btn').addEventListener('click', async()=>{
+  $('train-btn').disabled=true; $('clear-btn').disabled=true;
+  setStatus('Training…','');
+
+  const xsT = tf.concat(train.xs,0);
+  const ysT = tf.tensor1d(train.ys,'int32');
+
+  buildHead();
+  const N=train.ys.length;
+  await classifier.fit(xsT,ysT,{
+    epochs:EPOCHS, batchSize:Math.min(16,N), shuffle:true,
+    callbacks:{onEpochEnd:(ep,logs)=>{
+      const p=Math.round(((ep+1)/EPOCHS)*100);
+      $('prog-bar').style.width=p+'%';
+      $('prog-lbl').textContent=`Epoch ${ep+1}/${EPOCHS}  |  Loss: ${logs.loss.toFixed(4)}  |  Train Acc: ${(logs.acc*100).toFixed(1)}%`;
+    }}
+  });
+  xsT.dispose(); ysT.dispose();
+
+  trained=true;
+  $('train-btn').disabled=false; $('clear-btn').disabled=false;
+  setStatus('Training complete ✔ – Evaluating on validation set…','ready');
+  await evaluate();
+});
+
+/* ════════════════════════════════════════════════
+   EVALUATE
+════════════════════════════════════════════════ */
+async function evaluate(){
+  if(!trained||val.xs.length===0) return;
+
+  // Stack val features
+  const xsV = tf.concat(val.xs,0);
+  const predsT = classifier.predict(xsV);
+  const predsArr = Array.from(await predsT.argMax(1).data());
+  xsV.dispose(); predsT.dispose();
+
+  const actual = val.ys;
+  const N = actual.length;
+
+  // Build confusion matrix NC x NC
+  const cm = Array.from({length:NC},()=>Array(NC).fill(0));
+  for(let i=0;i<N;i++) cm[actual[i]][predsArr[i]]++;
+
+  // Per-class precision, recall, f1
+  const metrics=[];
+  for(let c=0;c<NC;c++){
+    const tp = cm[c][c];
+    const fpSum = cm.reduce((a,row,r)=> r!==c ? a+row[c] : a,0);
+    const fnSum = cm[c].reduce((a,v,j)=> j!==c ? a+v : a,0);
+    const prec = tp+fpSum>0 ? tp/(tp+fpSum) : 0;
+    const rec  = tp+fnSum>0 ? tp/(tp+fnSum) : 0;
+    const f1   = prec+rec>0 ? 2*prec*rec/(prec+rec) : 0;
+    metrics.push({tp, total:cm[c].reduce((a,b)=>a+b,0), prec, rec, f1});
+  }
+
+  const correct = actual.filter((a,i)=>a===predsArr[i]).length;
+  const overallAcc = correct/N;
+  const macroPrec = metrics.reduce((a,m)=>a+m.prec,0)/NC;
+  const macroRec  = metrics.reduce((a,m)=>a+m.rec,0)/NC;
+  const macroF1   = metrics.reduce((a,m)=>a+m.f1,0)/NC;
+
+  renderResults(cm, metrics, overallAcc, macroPrec, macroRec, macroF1, correct, N);
+  setStatus(`Evaluation done ✔  Overall Val Accuracy: ${(overallAcc*100).toFixed(1)}%`,'ready');
+}
+
+/* ════════════════════════════════════════════════
+   RENDER RESULTS
+════════════════════════════════════════════════ */
+function renderResults(cm, metrics, acc, mPrec, mRec, mF1, correct, N){
+  $('results-card').style.display='block';
+
+  // KPIs
+  $('kpi-grid').innerHTML=`
+    ${kpi((acc*100).toFixed(1)+'%','Overall Accuracy')}
+    ${kpi(correct+'/'+N,'Correct / Total')}
+    ${kpi((mPrec*100).toFixed(1)+'%','Macro Precision')}
+    ${kpi((mRec*100).toFixed(1)+'%','Macro Recall')}
+    ${kpi((mF1*100).toFixed(1)+'%','Macro F1 Score')}
+  `;
+
+  // Per-class table
+  const tbody=$('table-body');
+  tbody.innerHTML='';
+  for(let c=0;c<NC;c++){
+    const m=metrics[c];
+    const p=(m.prec*100).toFixed(1), r=(m.rec*100).toFixed(1), f=(m.f1*100).toFixed(1);
+    const pillP=pill(m.prec), pillR=pill(m.rec), pillF=pill(m.f1);
+    tbody.innerHTML+=`
+      <tr>
+        <td><strong>${getCat(c)}</strong></td>
+        <td>${m.total}</td>
+        <td>${m.tp}</td>
+        <td><span class="${pillP}">${p}%</span></td>
+        <td><span class="${pillR}">${r}%</span></td>
+        <td><span class="${pillF}">${f}%</span></td>
+      </tr>`;
+  }
+
+  // Confusion matrix
+  renderCM(cm);
+  $('results-card').scrollIntoView({behavior:'smooth'});
+}
+
+function kpi(val,lbl){
+  return `<div class="metric-card"><div class="val">${val}</div><div class="lbl">${lbl}</div></div>`;
+}
+function pill(v){ return v>=.75?'pill-good':v>=.5?'pill-ok':'pill-bad'; }
+
+function renderCM(cm){
+  // find max for color intensity
+  const flat=[].concat(...cm);
+  const maxVal=Math.max(...flat,1);
+
+  // Build header
+  let html='<table id="cm-table"><thead><tr>';
+  html+=`<th class="cm-axis-label">Actual ↓ / Predicted →</th>`;
+  for(let c=0;c<NC;c++) html+=`<th>${getCat(c)}</th>`;
+  html+='</tr></thead><tbody>';
+
+  for(let r=0;r<NC;r++){
+    html+=`<tr><th class="cm-axis-label">${getCat(r)}</th>`;
+    for(let c=0;c<NC;c++){
+      const v=cm[r][c];
+      const intensity=v/maxVal;
+      const bg = r===c
+        ? `rgba(34,197,94,${0.15+intensity*.6})`    // green diagonal
+        : v>0 ? `rgba(239,68,68,${0.1+intensity*.5})` : 'transparent'; // red off-diag
+      const col = r===c ? '#22c55e' : v>0 ? '#ef4444' : 'var(--muted)';
+      html+=`<td class="cm-cell" style="background:${bg};color:${col}">${v}</td>`;
+    }
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  $('cm-container').innerHTML=html;
+
+  // Legend
+  $('cm-legend').innerHTML=`
+    <div style="display:flex;align-items:center;gap:6px"><div class="legend-dot" style="background:rgba(34,197,94,.55)"></div> Correct prediction (diagonal)</div>
+    <div style="display:flex;align-items:center;gap:6px"><div class="legend-dot" style="background:rgba(239,68,68,.45)"></div> Mis-classification (off-diagonal)</div>
+    <div style="display:flex;align-items:center;gap:6px"><div class="legend-dot" style="background:var(--surf2);border:1px solid var(--border)"></div> Zero count</div>
+    <div>Darker shade = higher count</div>
+  `;
+}
+
+/* ════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════ */
+buildPanel();
+loadMNet();
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reload & Verify Model</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<style>
+  body { font-family: monospace; max-width: 520px; margin: 60px auto; padding: 0 20px; background: #f9f9f9; color: #222; }
+  h2   { font-size: 16px; margin-bottom: 4px; }
+  p    { font-size: 12px; color: #777; margin-bottom: 20px; }
+
+  .btn-row { display: flex; gap: 10px; }
+
+  button {
+    padding: 10px 22px; border: none; border-radius: 6px;
+    font-size: 13px; cursor: pointer; font-family: monospace;
+  }
+  #btnStep1 { background: #2d6a4f; color: #fff; }
+  #btnStep1:hover { background: #245a41; }
+  #btnStep2 { background: #1a3f6b; color: #fff; }
+  #btnStep2:hover { background: #153260; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  pre {
+    background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 14px; font-size: 12px; line-height: 1.9;
+    margin-top: 18px; white-space: pre-wrap; min-height: 40px;
+  }
+  .ok     { color: #2d6a4f; font-weight: bold; }
+  .err    { color: #c0392b; font-weight: bold; }
+  .dim    { color: #aaa; }
+  .head   { color: #1a3f6b; font-weight: bold; }
+  .match  { background: #eaf4ee; border-radius: 3px; padding: 0 4px; color: #2d6a4f; }
+  .nomatch{ background: #fef2f2; border-radius: 3px; padding: 0 4px; color: #c0392b; }
+</style>
+</head>
+<body>
+
+<h2>Reload model → Verify predictions match</h2>
+<p>Step 1 trains &amp; saves. Step 2 rebuilds the model from localStorage and checks predictions.</p>
+
+<div class="btn-row">
+  <button id="btnStep1" onclick="trainAndSave()">▶ Step 1: Train &amp; Save</button>
+  <button id="btnStep2" onclick="reloadAndVerify()" disabled>↺ Step 2: Reload &amp; Verify</button>
+</div>
+
+<pre id="log">Click Step 1 first...</pre>
+
+<script>
+const log       = document.getElementById('log');
+const btnStep1  = document.getElementById('btnStep1');
+const btnStep2  = document.getElementById('btnStep2');
+
+// Predictions made by the original trained model (filled after step 1)
+let originalPreds = {};
+
+function print(msg, cls = '') {
+  log.innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+// ── STEP 1: Train & Save ──────────────────────────────────
+async function trainAndSave() {
+  btnStep1.disabled = true;
+  btnStep2.disabled = true;
+  log.innerHTML = '';
+  originalPreds = {};
+
+  print('── STEP 1: Train & Save ──────────────────', 'head');
+
+  // Build
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+  model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+  print('Model built ✓');
+
+  // Train on y = 2x + 1
+  const xs = tf.tensor2d([-2,-1,0,1,2,3], [6,1]);
+  const ys = tf.tensor2d([-3,-1,1,3,5,7], [6,1]);
+
+  await model.fit(xs, ys, {
+    epochs: 150,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        if ((epoch+1) % 50 === 0)
+          print(`  epoch ${epoch+1}/150  loss: ${logs.loss.toFixed(6)}`, 'dim');
+      }
+    }
+  });
+  print('Training done ✓', 'ok');
+
+  // Save weights
+  const [wTensor, bTensor] = model.getWeights();
+  const w = wTensor.dataSync()[0];
+  const b = bTensor.dataSync()[0];
+  localStorage.setItem('model_w', w);
+  localStorage.setItem('model_b', b);
+  print(`\nSaved to localStorage → w: ${w.toFixed(6)},  b: ${b.toFixed(6)}`, 'ok');
+
+  // Record original predictions for x = 0,1,2,3,4,5
+  print('\nOriginal predictions:');
+  const testXs = [0, 1, 2, 3, 4, 5];
+  for (const x of testXs) {
+    const p = model.predict(tf.tensor2d([x], [1,1])).dataSync()[0];
+    originalPreds[x] = p;
+    print(`  x=${x}  →  ${p.toFixed(6)}  (expected ${2*x+1})`, 'dim');
+  }
+
+  print('\nStep 1 complete. Now click Step 2 ➜', 'ok');
+  btnStep2.disabled = false;
+  btnStep1.disabled = false;
+}
+
+// ── STEP 2: Reload & Verify ───────────────────────────────
+async function reloadAndVerify() {
+  btnStep2.disabled = true;
+  print('\n── STEP 2: Reload & Verify ───────────────', 'head');
+
+  // Read weights from localStorage
+  const w = parseFloat(localStorage.getItem('model_w'));
+  const b = parseFloat(localStorage.getItem('model_b'));
+
+  if (isNaN(w) || isNaN(b)) {
+    print('No saved weights found — run Step 1 first.', 'err');
+    btnStep2.disabled = false;
+    return;
+  }
+
+  print(`Loaded from localStorage → w: ${w.toFixed(6)},  b: ${b.toFixed(6)}`, 'ok');
+
+  // Rebuild identical architecture
+  const reloaded = tf.sequential();
+  reloaded.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+  reloaded.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+
+  // Restore weights
+  reloaded.setWeights([
+    tf.tensor2d([w], [1,1]),
+    tf.tensor1d([b])
+  ]);
+  print('Architecture rebuilt + weights restored ✓\n');
+
+  // Compare predictions
+  print('Verifying predictions:', 'head');
+  const testXs = [0, 1, 2, 3, 4, 5];
+  let allMatch = true;
+
+  for (const x of testXs) {
+    const newPred  = reloaded.predict(tf.tensor2d([x],[1,1])).dataSync()[0];
+    const origPred = originalPreds[x];
+    const diff     = Math.abs(newPred - origPred);
+    const match    = diff < 1e-4;
+    if (!match) allMatch = false;
+
+    const tag = match ? 'match' : 'nomatch';
+    const sym = match ? '✓ MATCH' : '✗ DIFF';
+    print(
+      `  x=${x}  orig: ${origPred != null ? origPred.toFixed(6) : 'N/A'}` +
+      `  reloaded: ${newPred.toFixed(6)}` +
+      `  diff: ${diff.toExponential(1)}  ` +
+      `<span class="${tag}">${sym}</span>`
+    );
+  }
+
+  print('');
+  if (allMatch) {
+    print('All predictions match — model reloaded correctly ✓', 'ok');
+  } else {
+    print('Some predictions differ — check weight shapes.', 'err');
+  }
+
+  btnStep2.disabled = false;
+}
+</script>
+</body>
+</html>

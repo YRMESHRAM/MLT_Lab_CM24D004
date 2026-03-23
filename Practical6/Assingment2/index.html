@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Exercise Rep Counter</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --bg:#0c0c0e;
+  --surface:#141418;
+  --surface2:#1c1c22;
+  --border:#2a2a35;
+  --accent:#f97316;
+  --accent2:#22d3ee;
+  --green:#4ade80;
+  --red:#f43f5e;
+  --text:#f0f0f5;
+  --muted:#52525e;
+}
+
+body{
+  background:var(--bg);
+  font-family:'Inter',sans-serif;
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:20px 16px 60px;
+}
+
+/* ── Header ── */
+.header{
+  width:100%;max-width:920px;
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:18px;
+}
+.logo{
+  display:flex;align-items:center;gap:10px;
+}
+.logo-icon{
+  width:38px;height:38px;
+  background:rgba(249,115,22,.12);
+  border:1px solid rgba(249,115,22,.3);
+  border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;
+}
+.logo-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.5rem;
+  letter-spacing:.1em;
+  color:var(--accent);
+}
+.logo-sub{font-size:.65rem;color:var(--muted);letter-spacing:.08em;}
+
+/* ── Layout ── */
+.layout{
+  width:100%;max-width:920px;
+  display:grid;
+  grid-template-columns:1fr 300px;
+  gap:16px;
+  align-items:start;
+}
+@media(max-width:720px){
+  .layout{grid-template-columns:1fr;}
+}
+
+/* ── Video card ── */
+.video-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  overflow:hidden;
+}
+.video-topbar{
+  padding:10px 14px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);
+  border-bottom:1px solid var(--border);
+}
+.topbar-left{display:flex;align-items:center;gap:8px;}
+.live-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--muted);
+  transition:background .3s,box-shadow .3s;
+}
+.live-dot.on{background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 1.3s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.topbar-label{font-size:.65rem;color:var(--muted);letter-spacing:.1em;font-weight:600;text-transform:uppercase;}
+
+/* Exercise selector */
+.ex-tabs{display:flex;gap:4px;}
+.ex-tab{
+  padding:5px 11px;
+  border-radius:6px;
+  font-size:.65rem;font-weight:600;
+  letter-spacing:.05em;
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  transition:all .2s;
+}
+.ex-tab:hover{color:var(--text);border-color:var(--accent);}
+.ex-tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* Video area */
+.video-area{
+  position:relative;
+  aspect-ratio:4/3;
+  background:#000;
+  overflow:hidden;
+}
+#canvas-container canvas{
+  display:block;
+  width:100%!important;
+  height:100%!important;
+}
+
+/* Off screen */
+#off-screen{
+  position:absolute;inset:0;
+  background:#080808;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:10px;color:#2a2a2a;
+}
+#off-screen p{font-size:.78rem;color:#333;}
+
+/* Loading */
+#load-overlay{
+  position:absolute;inset:0;
+  background:rgba(0,0,0,.85);
+  display:none;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:12px;z-index:30;
+}
+#load-overlay.show{display:flex;}
+.spinner{
+  width:30px;height:30px;
+  border:2.5px solid rgba(255,255,255,.1);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin .75s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+#load-overlay p{font-size:.72rem;color:#666;}
+
+/* ── OVERLAY PANEL — top-right on video ── */
+#overlay-panel{
+  position:absolute;
+  top:10px;right:10px;
+  width:150px;
+  background:rgba(12,12,14,.85);
+  backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  padding:12px;
+  display:none;
+  flex-direction:column;
+  gap:8px;
+  z-index:20;
+}
+#overlay-panel.show{display:flex;}
+
+.ov-label{font-size:.58rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;}
+
+/* Rep counter big */
+.ov-count{
+  text-align:center;
+  font-family:'Bebas Neue',sans-serif;
+  font-size:3.5rem;
+  line-height:1;
+  color:var(--accent);
+  text-shadow:0 0 20px rgba(249,115,22,.4);
+  transition:transform .1s;
+}
+.ov-count.pop{transform:scale(1.2);}
+
+.ov-phase{
+  text-align:center;
+  font-size:.72rem;font-weight:700;
+  padding:4px 8px;
+  border-radius:6px;
+  background:rgba(255,255,255,.05);
+  transition:background .2s,color .2s;
+}
+.ov-phase.down{background:rgba(244,63,94,.15);color:var(--red);}
+.ov-phase.up  {background:rgba(74,222,128,.15);color:var(--green);}
+.ov-phase.hold{background:rgba(249,115,22,.12);color:var(--accent);}
+
+/* Angle bar */
+.ov-angle-wrap{display:flex;flex-direction:column;gap:4px;}
+.ov-angle-label{
+  display:flex;justify-content:space-between;
+  font-size:.58rem;color:var(--muted);
+}
+.ov-angle-label span{color:var(--text);font-weight:600;}
+.ov-bar-track{
+  height:5px;background:rgba(255,255,255,.06);
+  border-radius:3px;overflow:hidden;
+}
+.ov-bar-fill{
+  height:100%;border-radius:3px;
+  background:var(--accent2);
+  transition:width .15s ease;
+  box-shadow:0 0 6px rgba(34,211,238,.4);
+}
+
+/* Phase progress arc */
+.ov-arc-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.ov-arc-label{font-size:.58rem;color:var(--muted);align-self:flex-start;}
+.progress-ring{transform:rotate(-90deg);}
+.ring-bg{fill:none;stroke:rgba(255,255,255,.06);stroke-width:4;}
+.ring-fg{fill:none;stroke:var(--accent2);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .15s ease;}
+
+/* Video bottom bar */
+.video-bottombar{
+  padding:12px 14px;
+  background:var(--surface2);
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;
+}
+.cam-btn{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 18px;
+  border:none;border-radius:8px;
+  font-size:.8rem;font-weight:600;
+  cursor:pointer;transition:all .2s;
+}
+.cam-btn:active{transform:scale(.97);}
+.cam-btn.start{background:var(--green);color:#000;}
+.cam-btn.stop {background:var(--red);color:#fff;}
+
+.mini-stats{display:flex;gap:14px;}
+.ms{font-size:.68rem;color:var(--muted);}
+.ms b{color:var(--text);}
+
+/* ── Side panel ── */
+.side{display:flex;flex-direction:column;gap:14px;}
+
+.panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+.panel-head{
+  padding:10px 14px;
+  background:var(--surface2);
+  border-bottom:1px solid var(--border);
+  font-size:.62rem;font-weight:700;
+  color:var(--muted);letter-spacing:.12em;text-transform:uppercase;
+  display:flex;align-items:center;gap:7px;
+}
+.panel-body{padding:14px;}
+
+/* Big rep total */
+.rep-total{
+  display:flex;flex-direction:column;align-items:center;
+  gap:2px;padding:8px 0;
+}
+.rep-big{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:4rem;line-height:1;
+  color:var(--accent);
+  text-shadow:0 0 30px rgba(249,115,22,.3);
+}
+.rep-sub{font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+
+/* Set history */
+.set-list{display:flex;flex-direction:column;gap:6px;}
+.set-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface2);border-radius:8px;
+  padding:8px 12px;font-size:.78rem;
+  animation:fadeUp .2s ease;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.set-row .set-name{font-weight:600;color:var(--text);}
+.set-row .set-reps{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.1rem;color:var(--accent);
+}
+.set-row .set-time{font-size:.62rem;color:var(--muted);}
+.no-sets{font-size:.72rem;color:var(--muted);text-align:center;padding:8px 0;}
+
+/* Exercise info */
+.ex-info-box{
+  background:var(--surface2);
+  border-radius:10px;
+  padding:12px;
+  display:flex;flex-direction:column;gap:6px;
+}
+.ex-name-big{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.3rem;letter-spacing:.06em;color:var(--accent);
+}
+.ex-desc{font-size:.68rem;color:var(--muted);line-height:1.5;}
+
+/* Angle gauges */
+.gauge-list{display:flex;flex-direction:column;gap:10px;}
+.gauge-row{}
+.gauge-info{
+  display:flex;justify-content:space-between;
+  font-size:.65rem;margin-bottom:4px;
+}
+.gauge-info .g-name{color:var(--muted);}
+.gauge-info .g-val{color:var(--text);font-weight:700;}
+.gauge-info .g-range{color:var(--muted);font-size:.58rem;}
+.gauge-track{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+.gauge-fill{height:100%;border-radius:3px;transition:width .15s ease,background .2s;}
+
+/* Reset button */
+.reset-btn{
+  width:100%;padding:10px;border:1px solid var(--border);
+  border-radius:8px;background:transparent;
+  font-size:.78rem;font-weight:600;color:var(--muted);
+  cursor:pointer;transition:all .2s;letter-spacing:.04em;
+}
+.reset-btn:hover{border-color:var(--red);color:var(--red);}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">🏋️</div>
+    <div>
+      <div class="logo-title">RepTracker</div>
+      <div class="logo-sub">AI-Powered Exercise Counter</div>
+    </div>
+  </div>
+</div>
+
+<!-- Layout -->
+<div class="layout">
+
+  <!-- Video card -->
+  <div class="video-card">
+    <div class="video-topbar">
+      <div class="topbar-left">
+        <div class="live-dot" id="live-dot"></div>
+        <span class="topbar-label" id="topbar-lbl">Camera Off</span>
+      </div>
+      <!-- Exercise tabs -->
+      <div class="ex-tabs">
+        <button class="ex-tab active" onclick="selectEx('squat')">Squat</button>
+        <button class="ex-tab" onclick="selectEx('pushup')">Push-Up</button>
+        <button class="ex-tab" onclick="selectEx('curl')">Curl</button>
+      </div>
+    </div>
+
+    <div class="video-area">
+      <div id="off-screen">
+        <svg width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>
+        <p>Enable camera to start</p>
+      </div>
+
+      <div id="canvas-container"></div>
+
+      <div id="load-overlay">
+        <div class="spinner"></div>
+        <p id="load-msg">Loading…</p>
+      </div>
+
+      <!-- OVERLAY PANEL — top right -->
+      <div id="overlay-panel">
+        <div class="ov-label">Reps</div>
+        <div class="ov-count" id="ov-count">0</div>
+        <div class="ov-phase" id="ov-phase">Ready</div>
+
+        <div class="ov-arc-wrap">
+          <div class="ov-arc-label">Range</div>
+          <svg width="60" height="34" viewBox="0 0 60 34">
+            <path class="ring-bg progress-ring" d="M30 30 m-24,0 a24,24 0 0,1 48,0" stroke-dasharray="75.4" stroke-dashoffset="0"/>
+            <path class="ring-fg progress-ring" id="arc-fg" d="M30 30 m-24,0 a24,24 0 0,1 48,0" stroke-dasharray="75.4" stroke-dashoffset="75.4"/>
+          </svg>
+        </div>
+
+        <div class="ov-angle-wrap">
+          <div class="ov-angle-label">Knee Angle <span id="ov-knee-val">—</span></div>
+          <div class="ov-bar-track"><div class="ov-bar-fill" id="ov-knee-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="video-bottombar">
+      <button class="cam-btn start" id="cam-btn" onclick="toggleCam()">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>
+        <span id="btn-lbl">Enable Camera</span>
+      </button>
+      <div class="mini-stats">
+        <div class="ms">FPS <b id="ms-fps">—</b></div>
+        <div class="ms">Conf <b id="ms-conf">—</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side">
+
+    <!-- Rep counter -->
+    <div class="panel">
+      <div class="panel-head">📊 Current Set</div>
+      <div class="panel-body">
+        <div class="rep-total">
+          <div class="rep-big" id="rep-big">0</div>
+          <div class="rep-sub" id="rep-sub-label">Squats</div>
+        </div>
+        <button class="reset-btn" onclick="resetReps()">Reset Counter</button>
+      </div>
+    </div>
+
+    <!-- Exercise info -->
+    <div class="panel">
+      <div class="panel-head">🎯 Exercise</div>
+      <div class="panel-body">
+        <div class="ex-info-box">
+          <div class="ex-name-big" id="ex-name-big">SQUAT</div>
+          <div class="ex-desc" id="ex-desc">Stand with feet shoulder-width apart. Lower until knee angle &lt; 100°, then stand back up.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live angles -->
+    <div class="panel">
+      <div class="panel-head">📐 Joint Angles</div>
+      <div class="panel-body">
+        <div class="gauge-list" id="gauge-list">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Set history -->
+    <div class="panel">
+      <div class="panel-head">🏆 Set History</div>
+      <div class="panel-body">
+        <div class="set-list" id="set-list">
+          <div class="no-sets">No sets completed yet</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EXERCISE DEFINITIONS
+// Each exercise defines which angle to track,
+// what the UP and DOWN thresholds are, and which
+// joints form that angle.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const EXERCISES = {
+  squat: {
+    name: 'Squat',
+    emoji: '🏋️',
+    desc: 'Stand with feet shoulder-width apart. Lower until knee angle < 100°, then stand back up.',
+    // angle at KNEE: hip → knee → ankle
+    joints: [
+      { label:'Left Knee',  pts:['leftHip','leftKnee','leftAnkle'],  color:'#f97316' },
+      { label:'Right Knee', pts:['rightHip','rightKnee','rightAnkle'], color:'#22d3ee' },
+    ],
+    downThreshold: 100,   // angle < this  = bottom of squat (DOWN)
+    upThreshold:   160,   // angle > this  = standing (UP)
+    downLabel: '⬇ Going Down',
+    upLabel:   '⬆ Standing Up',
+    holdLabel: '↕ In Motion',
+  },
+  pushup: {
+    name: 'Push-Up',
+    emoji: '💪',
+    desc: 'Start in plank. Lower chest to floor (elbow angle < 80°), then push back up fully (> 155°).',
+    joints: [
+      { label:'Left Elbow',  pts:['leftShoulder','leftElbow','leftWrist'],  color:'#f97316' },
+      { label:'Right Elbow', pts:['rightShoulder','rightElbow','rightWrist'], color:'#22d3ee' },
+    ],
+    downThreshold: 80,
+    upThreshold:   155,
+    downLabel: '⬇ Lowering',
+    upLabel:   '⬆ Pushing Up',
+    holdLabel: '↕ In Motion',
+  },
+  curl: {
+    name: 'Bicep Curl',
+    emoji: '💪',
+    desc: 'Keep elbows at sides. Curl arms up (elbow angle < 60°), then lower fully (> 150°).',
+    joints: [
+      { label:'Left Elbow',  pts:['leftShoulder','leftElbow','leftWrist'],  color:'#f97316' },
+      { label:'Right Elbow', pts:['rightShoulder','rightElbow','rightWrist'], color:'#22d3ee' },
+    ],
+    downThreshold: 60,
+    upThreshold:   150,
+    downLabel: '⬆ Curl Up',
+    upLabel:   '⬇ Lower Down',
+    holdLabel: '↕ In Motion',
+  },
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let currentEx = 'squat';
+let reps = 0;
+let phase = 'up';        // 'up' | 'down'
+let inRep = false;
+let sets = [];
+let sessionStart = null;
+let camOn = false;
+let poses = [], capture = null, p5inst = null;
+let fpsArr = [], lastT = 0;
+
+// Smoothed angles
+const smoothAngles = {};
+
+// ── Angle math ────────────────────────────────────
+function jointAngle(a, b, c) {
+  const ab = { x: a.x-b.x, y: a.y-b.y };
+  const cb = { x: c.x-b.x, y: c.y-b.y };
+  const dot = ab.x*cb.x + ab.y*cb.y;
+  const mag = Math.sqrt(ab.x**2+ab.y**2) * Math.sqrt(cb.x**2+cb.y**2);
+  if (mag < 1e-6) return 180;
+  return Math.acos(Math.min(1,Math.max(-1, dot/mag))) * 180 / Math.PI;
+}
+
+function getKP(pose, name, minConf=0.3) {
+  const k = pose.keypoints.find(p => p.part === name);
+  return (k && k.score >= minConf) ? k.position : null;
+}
+
+// EMA smooth per joint
+function smooth(key, val, alpha=0.3) {
+  if (smoothAngles[key] === undefined) smoothAngles[key] = val;
+  smoothAngles[key] = smoothAngles[key]*(1-alpha) + val*alpha;
+  return Math.round(smoothAngles[key]);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REP COUNTING LOGIC
+// State machine: up → down → up = 1 rep
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function processAngles(angleValues) {
+  const ex = EXERCISES[currentEx];
+  // Use average of available joint angles
+  const valid = angleValues.filter(v => v !== null);
+  if (!valid.length) return null;
+  const avg = valid.reduce((s,v)=>s+v,0) / valid.length;
+
+  const isDown = avg < ex.downThreshold;
+  const isUp   = avg > ex.upThreshold;
+
+  let phaseLabel = ex.holdLabel;
+  let phaseClass = 'hold';
+
+  if (phase === 'up' && isDown) {
+    // Entered bottom position
+    phase = 'down';
+    phaseLabel = ex.downLabel;
+    phaseClass = 'down';
+  } else if (phase === 'down' && isUp) {
+    // Came back up — count rep!
+    phase = 'up';
+    reps++;
+    triggerRepPop();
+    phaseLabel = ex.upLabel;
+    phaseClass = 'up';
+    updateRepDisplay();
+  } else if (phase === 'down') {
+    phaseLabel = ex.downLabel;
+    phaseClass = 'down';
+  } else {
+    phaseLabel = ex.upLabel;
+    phaseClass = 'up';
+  }
+
+  // Progress = how far into range  0=top  1=bottom
+  const rangeSize = ex.upThreshold - ex.downThreshold;
+  const progress = Math.min(1, Math.max(0, (ex.upThreshold - avg) / rangeSize));
+
+  return { avg, progress, phaseLabel, phaseClass };
+}
+
+// ── Rep pop animation ─────────────────────────────
+function triggerRepPop() {
+  const el = document.getElementById('ov-count');
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+  setTimeout(() => el.classList.remove('pop'), 200);
+}
+
+// ── Update displays ───────────────────────────────
+function updateRepDisplay() {
+  document.getElementById('ov-count').textContent  = reps;
+  document.getElementById('rep-big').textContent   = reps;
+}
+
+function updateOverlay(result, angleValues) {
+  if (!result) return;
+  const { avg, progress, phaseLabel, phaseClass } = result;
+  const ex = EXERCISES[currentEx];
+
+  // Phase label
+  const phEl = document.getElementById('ov-phase');
+  phEl.textContent  = phaseLabel;
+  phEl.className    = 'ov-phase ' + phaseClass;
+
+  // Arc progress (75.4 = full arc circumference)
+  const offset = 75.4 - (progress * 75.4);
+  document.getElementById('arc-fg').style.strokeDashoffset = offset;
+
+  // Primary angle bar (first joint)
+  const primaryAngle = angleValues[0] !== null ? angleValues[0] : avg;
+  const barPct = Math.min(100, Math.max(0, Math.round((primaryAngle / 180) * 100)));
+  document.getElementById('ov-knee-val').textContent = Math.round(primaryAngle) + '°';
+  document.getElementById('ov-knee-bar').style.width = barPct + '%';
+  // Color shifts: green near top, red near bottom
+  const barColor = primaryAngle > ex.upThreshold ? '#4ade80'
+    : primaryAngle < ex.downThreshold ? '#f43f5e' : '#22d3ee';
+  document.getElementById('ov-knee-bar').style.background = barColor;
+
+  // Gauge list (side panel)
+  updateGauges(ex, angleValues);
+}
+
+function updateGauges(ex, angleValues) {
+  const gl = document.getElementById('gauge-list');
+  gl.innerHTML = ex.joints.map((j, i) => {
+    const angle = angleValues[i];
+    if (angle === null) return '';
+    const pct = Math.round((angle/180)*100);
+    const inRange = angle < ex.upThreshold && angle > ex.downThreshold;
+    const atBottom = angle < ex.downThreshold;
+    const color = atBottom ? '#f43f5e' : inRange ? '#22d3ee' : '#4ade80';
+    return `
+      <div class="gauge-row">
+        <div class="gauge-info">
+          <span class="g-name">${j.label}</span>
+          <span class="g-val">${angle}°</span>
+          <span class="g-range">${ex.downThreshold}°–${ex.upThreshold}°</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Exercise switch ───────────────────────────────
+function selectEx(name) {
+  currentEx = name;
+  reps = 0;
+  phase = 'up';
+  Object.keys(smoothAngles).forEach(k => delete smoothAngles[k]);
+  const ex = EXERCISES[name];
+  document.getElementById('ex-name-big').textContent = ex.name.toUpperCase();
+  document.getElementById('ex-desc').textContent     = ex.desc;
+  document.getElementById('rep-sub-label').textContent = ex.name + 's';
+  document.getElementById('ov-count').textContent = '0';
+  document.getElementById('rep-big').textContent  = '0';
+  document.querySelectorAll('.ex-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.toLowerCase().includes(name.split('u')[0].trim()));
+  });
+  // Fix tab highlight properly
+  document.querySelectorAll('.ex-tab').forEach(t => {
+    const map = { squat:'Squat', pushup:'Push-Up', curl:'Curl' };
+    t.classList.toggle('active', t.textContent === map[name]);
+  });
+}
+
+// ── Reset ─────────────────────────────────────────
+function resetReps() {
+  if (reps > 0) {
+    const ex = EXERCISES[currentEx];
+    const time = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    sets.unshift({ name: ex.name, reps, time });
+    if (sets.length > 8) sets.pop();
+    renderSets();
+  }
+  reps = 0;
+  phase = 'up';
+  updateRepDisplay();
+}
+
+function renderSets() {
+  const el = document.getElementById('set-list');
+  if (!sets.length) { el.innerHTML='<div class="no-sets">No sets completed yet</div>'; return; }
+  el.innerHTML = sets.map((s,i) => `
+    <div class="set-row">
+      <span class="set-name">${s.name}</span>
+      <span class="set-reps">${s.reps} reps</span>
+      <span class="set-time">${s.time}</span>
+    </div>`).join('');
+}
+
+// ── Skeleton links ────────────────────────────────
+const LINKS = [
+  ['leftShoulder','rightShoulder'],
+  ['leftShoulder','leftElbow'],['rightShoulder','rightElbow'],
+  ['leftElbow','leftWrist'],['rightElbow','rightWrist'],
+  ['leftShoulder','leftHip'],['rightShoulder','rightHip'],
+  ['leftHip','rightHip'],
+  ['leftHip','leftKnee'],['rightHip','rightKnee'],
+  ['leftKnee','leftAnkle'],['rightKnee','rightAnkle'],
+];
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CAMERA
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function toggleCam() { camOn ? stopCam() : startCam(); }
+
+function startCam() {
+  camOn = true; syncBtn();
+  document.getElementById('off-screen').style.display = 'none';
+  showLoad('Starting camera…');
+
+  p5inst = new p5(s => {
+    s.setup = () => {
+      const cnv = s.createCanvas(640, 480);
+      cnv.parent('canvas-container');
+      capture = s.createCapture(s.VIDEO);
+      capture.size(640, 480);
+      capture.hide();
+      showLoad('Loading PoseNet…');
+
+      const net = ml5.poseNet(capture, { flipHorizontal: false }, () => {
+        hideLoad();
+        document.getElementById('overlay-panel').classList.add('show');
+        document.getElementById('live-dot').classList.add('on');
+        document.getElementById('topbar-lbl').textContent = 'LIVE';
+        sessionStart = Date.now();
+      });
+      net.on('pose', r => { poses = r; });
+    };
+
+    s.draw = () => {
+      // FPS
+      const now = s.millis();
+      fpsArr.push(1000/(now - lastT)); lastT = now;
+      if (fpsArr.length > 20) fpsArr.shift();
+      const fps = Math.round(fpsArr.reduce((a,b)=>a+b,0)/fpsArr.length);
+      document.getElementById('ms-fps').textContent = fps;
+
+      // Draw mirrored feed
+      s.push(); s.translate(640,0); s.scale(-1,1);
+      s.image(capture, 0, 0, 640, 480);
+      s.pop();
+
+      if (!poses.length) {
+        document.getElementById('ms-conf').textContent = '—';
+        return;
+      }
+
+      const pose = poses[0].pose;
+      document.getElementById('ms-conf').textContent = Math.round(pose.score*100)+'%';
+
+      const kpMap = {};
+      pose.keypoints.forEach(k => { kpMap[k.part] = k; });
+      const mx = x => 640 - x;
+
+      // Highlight joints relevant to current exercise
+      const ex = EXERCISES[currentEx];
+      const highlight = new Set(ex.joints.flatMap(j=>j.pts));
+
+      // Draw skeleton
+      s.strokeWeight(2.2); s.noFill();
+      LINKS.forEach(([a,b]) => {
+        const ka=kpMap[a], kb=kpMap[b];
+        if (ka&&kb&&ka.score>0.3&&kb.score>0.3) {
+          const isHL = highlight.has(a) && highlight.has(b);
+          s.stroke(isHL ? 249 : 74, isHL ? 115 : 74, isHL ? 22 : 74,
+                   Math.min(ka.score,kb.score)*255);
+          s.strokeWeight(isHL ? 3.5 : 2);
+          s.line(mx(ka.position.x),ka.position.y, mx(kb.position.x),kb.position.y);
+        }
+      });
+
+      // Draw keypoints
+      pose.keypoints.filter(k=>k.score>0.3).forEach(k=>{
+        const isHL = highlight.has(k.part);
+        s.noStroke();
+        s.fill(isHL ? 249 : 100, isHL ? 115 : 100, isHL ? 22 : 100, k.score*255);
+        s.circle(mx(k.position.x), k.position.y, isHL ? 12 : 8);
+      });
+
+      // Draw angle arcs on highlighted joints
+      ex.joints.forEach((j, idx) => {
+        const [pA, pB, pC] = j.pts;
+        const a = getKP(pose, pA), b = getKP(pose, pB), c = getKP(pose, pC);
+        if (!a||!b||!c) return;
+        const angle = jointAngle(a, b, c);
+        const sAngle = smooth(j.label, angle);
+
+        // Draw angle arc
+        const bx = mx(b.x), by = b.y;
+        const r = 28;
+        const a1 = Math.atan2(a.y-b.y, mx(a.x)-bx);
+        const a2 = Math.atan2(c.y-b.y, mx(c.x)-bx);
+
+        s.noFill();
+        s.stroke(idx===0?249:34, idx===0?115:211, idx===0?22:238, 180);
+        s.strokeWeight(2);
+        s.arc(bx, by, r*2, r*2, Math.min(a1,a2), Math.max(a1,a2));
+
+        // Angle label
+        s.noStroke();
+        s.fill(255,255,255,220);
+        s.textSize(13);
+        s.textAlign(s.CENTER);
+        s.text(sAngle+'°', bx, by-r-5);
+      });
+
+      // Compute angles for rep counting
+      const angleValues = ex.joints.map(j => {
+        const [pA,pB,pC] = j.pts;
+        const a=getKP(pose,pA), b=getKP(pose,pB), c=getKP(pose,pC);
+        if (!a||!b||!c) return null;
+        return smooth(j.label, jointAngle(a,b,c));
+      });
+
+      const result = processAngles(angleValues);
+      updateOverlay(result, angleValues);
+    };
+  });
+}
+
+function stopCam() {
+  camOn=false; poses=[];
+  if (capture){capture.remove();capture=null;}
+  if (p5inst){p5inst.remove();p5inst=null;}
+  syncBtn();
+  document.getElementById('off-screen').style.display='flex';
+  document.getElementById('overlay-panel').classList.remove('show');
+  document.getElementById('live-dot').classList.remove('on');
+  document.getElementById('topbar-lbl').textContent='Camera Off';
+}
+
+function syncBtn(){
+  document.getElementById('cam-btn').className = 'cam-btn '+(camOn?'stop':'start');
+  document.getElementById('btn-lbl').textContent = camOn?'Disable Camera':'Enable Camera';
+}
+function showLoad(m){document.getElementById('load-overlay').classList.add('show');document.getElementById('load-msg').textContent=m;}
+function hideLoad(){document.getElementById('load-overlay').classList.remove('show');}
+</script>
+</body>
+</html>

@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MobileNet Transfer Learning – 3 Categories</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <!-- MobileNet feature extractor -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+
+  <style>
+    /* ===== RESET & TOKENS ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --accent:    #7c3aed;
+      --accent2:   #a855f7;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --radius:    14px;
+      --shadow:    0 4px 32px rgba(0,0,0,.45);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 60px;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, #a78bfa, #7c3aed, #db2777);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: .95rem;
+    }
+
+    /* ===== STATUS BAR ===== */
+    #status-bar {
+      max-width: 860px;
+      margin: 0 auto 28px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: .88rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #status-bar .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--yellow);
+      animation: pulse 1.4s infinite;
+    }
+    #status-bar.ready .dot  { background: var(--green); animation: none; }
+    #status-bar.error .dot  { background: var(--red);   animation: none; }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .3; }
+    }
+
+    /* ===== MAIN GRID ===== */
+    .container { max-width: 860px; margin: 0 auto; }
+
+    /* ===== STEP CARDS ===== */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      position: relative;
+      transition: border-color .25s;
+    }
+    .card:hover { border-color: var(--accent); }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .step-badge {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: .8rem; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+
+    /* ===== CATEGORY INPUTS ===== */
+    .cat-inputs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .cat-inputs input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: .9rem;
+      transition: border-color .2s;
+    }
+    .cat-inputs input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .cat-label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 5px; }
+
+    /* ===== VIDEO / CANVAS ===== */
+    .video-section {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    #video-wrap {
+      position: relative;
+      width: 240px; height: 180px;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+    }
+    #video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    #canvas { display: none; }
+
+    /* ===== CAPTURE CONTROLS ===== */
+    .capture-panel { display: flex; flex-direction: column; gap: 14px; }
+    .capture-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .cat-name {
+      min-width: 100px;
+      font-size: .9rem;
+      font-weight: 500;
+    }
+    .count-badge {
+      background: var(--accent);
+      color: #fff;
+      font-size: .75rem;
+      font-weight: 700;
+      padding: 2px 9px;
+      border-radius: 20px;
+      min-width: 36px;
+      text-align: center;
+    }
+    .thumb-strip {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 5px;
+      overflow-x: auto;
+      max-width: 300px;
+    }
+    .thumb-strip img {
+      width: 42px; height: 42px;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+    }
+
+    /* ===== BUTTONS ===== */
+    button {
+      font-family: inherit;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 18px;
+      transition: opacity .2s, transform .1s;
+    }
+    button:active { transform: scale(.97); }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { opacity: .88; }
+    .btn-capture {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 7px 13px;
+      font-size: .8rem;
+    }
+    .btn-capture:hover:not(:disabled) { border-color: var(--accent2); }
+    .btn-danger {
+      background: rgba(239,68,68,.15);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,.35);
+    }
+    .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,.25); }
+
+    /* ===== PROGRESS BAR ===== */
+    .progress-wrap {
+      background: var(--bg);
+      border-radius: 100px;
+      height: 8px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 100px;
+      transition: width .25s;
+    }
+    #progress-label { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+
+    /* ===== TRAINING ROW ===== */
+    .train-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    /* ===== PREDICTION ===== */
+    .predict-area {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* upload box */
+    #drop-zone {
+      width: 200px; height: 180px;
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: .82rem;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,58,237,.07);
+    }
+    #drop-zone input[type=file] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    #drop-zone .icon { font-size: 2.2rem; }
+
+    #preview-img {
+      width: 200px; height: 180px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      display: none;
+    }
+
+    /* result bars */
+    .result-title { font-size: .9rem; font-weight: 600; margin-bottom: 14px; }
+    .result-bar-wrap { margin-bottom: 10px; }
+    .result-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .82rem;
+      margin-bottom: 4px;
+    }
+    .result-bar-bg {
+      background: var(--bg);
+      border-radius: 100px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .result-bar-fill {
+      height: 100%;
+      border-radius: 100px;
+      transition: width .5s ease;
+    }
+    .winner-label {
+      margin-top: 14px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 600px) {
+      .cat-inputs { grid-template-columns: 1fr; }
+      .video-section { grid-template-columns: 1fr; }
+      #video-wrap { width: 100%; height: 200px; }
+      .predict-area { grid-template-columns: 1fr; }
+      #drop-zone, #preview-img { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 MobileNet Transfer Learning</h1>
+  <p>Retrain MobileNet on <strong>3 custom categories</strong> – directly in your browser</p>
+</header>
+
+<!-- Status -->
+<div id="status-bar">
+  <span class="dot"></span>
+  <span id="status-text">Loading TensorFlow.js & MobileNet feature extractor…</span>
+</div>
+
+<div class="container">
+
+  <!-- STEP 1: Define Categories -->
+  <div class="card">
+    <div class="card-title">
+      <span class="step-badge">1</span>
+      Define Your 3 Categories
+    </div>
+    <div class="cat-inputs">
+      <div>
+        <label class="cat-label">Category A</label>
+        <input id="cat0" type="text" placeholder="e.g. Cat" value="Category A"/>
+      </div>
+      <div>
+        <label class="cat-label">Category B</label>
+        <input id="cat1" type="text" placeholder="e.g. Dog" value="Category B"/>
+      </div>
+      <div>
+        <label class="cat-label">Category C</label>
+        <input id="cat2" type="text" placeholder="e.g. Bird" value="Category C"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Capture Samples -->
+  <div class="card">
+    <div class="card-title">
+      <span class="step-badge">2</span>
+      Capture Training Samples (≥ 10 per category)
+    </div>
+    <div class="video-section">
+      <div id="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" width="224" height="224"></canvas>
+      </div>
+
+      <div class="capture-panel" id="capture-panel">
+        <!-- rows injected by JS -->
+      </div>
+    </div>
+    <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button class="btn-primary" id="start-cam-btn">▶ Start Camera</button>
+      <button class="btn-danger" id="clear-btn" disabled>🗑 Clear All Samples</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Train -->
+  <div class="card">
+    <div class="card-title">
+      <span class="step-badge">3</span>
+      Train the Classifier
+    </div>
+    <div class="train-row">
+      <button class="btn-primary" id="train-btn" disabled>⚡ Train Model</button>
+      <span style="font-size:.82rem;color:var(--muted);">Epochs: 30 &nbsp;|&nbsp; Tiny dense head on MobileNet features</span>
+    </div>
+    <div class="progress-wrap">
+      <div id="progress-bar"></div>
+    </div>
+    <div id="progress-label">–</div>
+  </div>
+
+  <!-- STEP 4: Predict -->
+  <div class="card">
+    <div class="card-title">
+      <span class="step-badge">4</span>
+      Predict an Image
+    </div>
+    <div class="predict-area">
+      <div>
+        <div id="drop-zone">
+          <span class="icon">🖼</span>
+          <span>Click or drag image here</span>
+          <input type="file" accept="image/*" id="file-input"/>
+        </div>
+        <img id="preview-img" alt="preview"/>
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <button class="btn-primary" id="predict-btn" disabled>🔍 Predict</button>
+          <button class="btn-capture" id="predict-cam-btn" disabled>📷 Use Camera</button>
+        </div>
+      </div>
+
+      <div id="results-panel">
+        <div class="result-title">Prediction Results</div>
+        <div id="result-bars"></div>
+        <div class="winner-label" id="winner-label"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+/* ========================================================
+   STATE
+======================================================== */
+const NUM_CLASSES = 3;
+const EPOCHS      = 30;
+const IMG_SIZE    = 224;
+
+let mobileNet = null;
+let classifier = null;
+let isTrained  = false;
+let stream     = null;
+
+// xs = array of tensors (feature vectors), ys = class indices
+const samples = {xs: [], ys: []};
+const counts  = [0, 0, 0];
+
+/* ========================================================
+   DOM REFS
+======================================================== */
+const statusBar   = document.getElementById('status-bar');
+const statusText  = document.getElementById('status-text');
+const video       = document.getElementById('video');
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const trainBtn    = document.getElementById('train-btn');
+const clearBtn    = document.getElementById('clear-btn');
+const startCamBtn = document.getElementById('start-cam-btn');
+const predictBtn  = document.getElementById('predict-btn');
+const predictCamBtn = document.getElementById('predict-cam-btn');
+const progressBar = document.getElementById('progress-bar');
+const progressLbl = document.getElementById('progress-label');
+const fileInput   = document.getElementById('file-input');
+const dropZone    = document.getElementById('drop-zone');
+const previewImg  = document.getElementById('preview-img');
+const resultBars  = document.getElementById('result-bars');
+const winnerLbl   = document.getElementById('winner-label');
+const capturePanel = document.getElementById('capture-panel');
+
+/* ========================================================
+   BUILD CAPTURE ROWS
+======================================================== */
+function buildCaptureRows() {
+  capturePanel.innerHTML = '';
+  for (let i = 0; i < NUM_CLASSES; i++) {
+    const row = document.createElement('div');
+    row.className = 'capture-row';
+    row.innerHTML = `
+      <span class="cat-name" id="cname-${i}">${getCatName(i)}</span>
+      <button class="btn-capture" id="cap-btn-${i}" disabled>📷 Capture</button>
+      <span class="count-badge" id="cnt-${i}">0</span>
+      <div class="thumb-strip" id="strip-${i}"></div>
+    `;
+    capturePanel.appendChild(row);
+    document.getElementById(`cap-btn-${i}`).addEventListener('click', () => captureForClass(i));
+  }
+  // keep names in sync
+  ['cat0','cat1','cat2'].forEach((id, i) => {
+    document.getElementById(id).addEventListener('input', () => {
+      document.getElementById(`cname-${i}`).textContent = getCatName(i);
+    });
+  });
+}
+
+function getCatName(i) {
+  return document.getElementById(`cat${i}`).value.trim() || `Category ${String.fromCharCode(65+i)}`;
+}
+
+/* ========================================================
+   STATUS HELPERS
+======================================================== */
+function setStatus(msg, state='loading') {
+  statusText.textContent = msg;
+  statusBar.className = state === 'ready' ? 'ready' : state === 'error' ? 'error' : '';
+}
+
+/* ========================================================
+   LOAD MOBILENET
+======================================================== */
+async function loadMobileNet() {
+  setStatus('Loading MobileNet… (may take a few seconds)');
+  try {
+    mobileNet = await mobilenet.load({version: 2, alpha: 1.0});
+    // Warm up
+    const dummy = tf.zeros([1, IMG_SIZE, IMG_SIZE, 3]);
+    const warmup = mobileNet.infer(dummy, true);
+    warmup.dispose(); dummy.dispose();
+
+    setStatus('MobileNet loaded ✔  –  Start camera & capture samples to begin.', 'ready');
+    startCamBtn.disabled = false;
+  } catch(e) {
+    setStatus('Failed to load MobileNet: ' + e.message, 'error');
+  }
+}
+
+/* ========================================================
+   CAMERA
+======================================================== */
+startCamBtn.addEventListener('click', async () => {
+  if (stream) { stopCamera(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode:'environment'}, audio: false});
+    video.srcObject = stream;
+    startCamBtn.textContent = '⏹ Stop Camera';
+    // enable capture buttons
+    for (let i=0; i<NUM_CLASSES; i++) document.getElementById(`cap-btn-${i}`).disabled = false;
+    predictCamBtn.disabled = !isTrained;
+  } catch(e) {
+    setStatus('Camera error: ' + e.message, 'error');
+  }
+});
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  startCamBtn.textContent = '▶ Start Camera';
+  for (let i=0; i<NUM_CLASSES; i++) document.getElementById(`cap-btn-${i}`).disabled = true;
+  predictCamBtn.disabled = true;
+}
+
+/* ========================================================
+   CAPTURE A FRAME
+======================================================== */
+function captureForClass(classIdx) {
+  if (!stream) return;
+  ctx.drawImage(video, 0, 0, IMG_SIZE, IMG_SIZE);
+  const dataURL = canvas.toDataURL('image/jpeg', .85);
+
+  // Extract feature vector
+  const imgTensor = tf.browser.fromPixels(canvas).expandDims(0);
+  const features  = mobileNet.infer(imgTensor, true);      // shape [1,1280]
+  imgTensor.dispose();
+
+  samples.xs.push(features);
+  samples.ys.push(classIdx);
+  counts[classIdx]++;
+
+  // Update UI
+  document.getElementById(`cnt-${classIdx}`).textContent = counts[classIdx];
+  const strip = document.getElementById(`strip-${classIdx}`);
+  const img = document.createElement('img');
+  img.src = dataURL;
+  strip.appendChild(img);
+  if (strip.children.length > 8) strip.removeChild(strip.firstChild);
+
+  const total = counts.reduce((a,b)=>a+b, 0);
+  const allEnough = counts.every(c => c >= 5);
+  trainBtn.disabled  = !allEnough;
+  clearBtn.disabled  = total === 0;
+  setStatus(`Samples: ${counts.map((c,i)=>`${getCatName(i)}=${c}`).join(' | ')}.${allEnough ? ' Ready to train!' : ' Capture ≥5 per class.'}`, 'ready');
+}
+
+/* ========================================================
+   CLEAR
+======================================================== */
+clearBtn.addEventListener('click', () => {
+  samples.xs.forEach(t => t.dispose());
+  samples.xs.length = 0;
+  samples.ys.length = 0;
+  counts.fill(0);
+  for (let i=0; i<NUM_CLASSES; i++) {
+    document.getElementById(`cnt-${i}`).textContent = '0';
+    document.getElementById(`strip-${i}`).innerHTML = '';
+  }
+  trainBtn.disabled = true;
+  clearBtn.disabled = true;
+  isTrained = false;
+  predictBtn.disabled = true;
+  predictCamBtn.disabled = true;
+  progressBar.style.width = '0%';
+  progressLbl.textContent = '–';
+  resultBars.innerHTML = '';
+  winnerLbl.textContent = '';
+  setStatus('All samples cleared. Capture new samples.', 'ready');
+});
+
+/* ========================================================
+   BUILD HEAD MODEL
+======================================================== */
+function buildClassifier() {
+  if (classifier) { classifier.dispose(); classifier = null; }
+  classifier = tf.sequential();
+  classifier.add(tf.layers.dense({inputShape:[1280], units:128, activation:'relu',
+                                   kernelRegularizer: tf.regularizers.l2({l2:1e-4})}));
+  classifier.add(tf.layers.dropout({rate:.3}));
+  classifier.add(tf.layers.dense({units: NUM_CLASSES, activation:'softmax'}));
+  classifier.compile({
+    optimizer: tf.train.adam(1e-3),
+    loss: 'sparseCategoricalCrossentropy',
+    metrics: ['accuracy']
+  });
+}
+
+/* ========================================================
+   TRAIN
+======================================================== */
+trainBtn.addEventListener('click', async () => {
+  trainBtn.disabled = true;
+  clearBtn.disabled = true;
+  isTrained = false;
+  setStatus('Training… please wait.', 'loading');
+
+  // Stack tensors
+  const xsTensor = tf.concat(samples.xs, 0);                   // [N, 1280]
+  const ysTensor = tf.tensor1d(samples.ys, 'int32');
+
+  buildClassifier();
+  const total = samples.ys.length;
+  await classifier.fit(xsTensor, ysTensor, {
+    epochs: EPOCHS,
+    batchSize: Math.min(16, total),
+    shuffle: true,
+    callbacks: {
+      onEpochEnd: (epoch, logs) => {
+        const pct = Math.round(((epoch+1)/EPOCHS)*100);
+        progressBar.style.width = pct + '%';
+        progressLbl.textContent = `Epoch ${epoch+1}/${EPOCHS}  |  Loss: ${logs.loss.toFixed(4)}  |  Acc: ${(logs.acc*100).toFixed(1)}%`;
+      }
+    }
+  });
+
+  xsTensor.dispose(); ysTensor.dispose();
+  isTrained = true;
+  setStatus('Training complete ✔  –  Now predict an image!', 'ready');
+  trainBtn.disabled  = false;
+  clearBtn.disabled  = false;
+  predictBtn.disabled = false;
+  predictCamBtn.disabled = !stream;
+});
+
+/* ========================================================
+   PREDICT
+======================================================== */
+async function predictImage(source) {
+  if (!isTrained) { alert('Please train the model first!'); return; }
+
+  const imgTensor = tf.browser.fromPixels(source)
+    .resizeBilinear([IMG_SIZE, IMG_SIZE])
+    .expandDims(0);
+  const features  = mobileNet.infer(imgTensor, true);
+  const preds     = classifier.predict(features);
+  const probs     = await preds.data();
+  imgTensor.dispose(); features.dispose(); preds.dispose();
+
+  renderResults(Array.from(probs));
+}
+
+function renderResults(probs) {
+  const palette = ['#7c3aed','#0ea5e9','#22c55e'];
+  resultBars.innerHTML = '';
+
+  let best = 0;
+  probs.forEach((p, i) => { if (p > probs[best]) best = i; });
+
+  probs.forEach((prob, i) => {
+    const pct = (prob * 100).toFixed(1);
+    const div = document.createElement('div');
+    div.className = 'result-bar-wrap';
+    div.innerHTML = `
+      <div class="result-label">
+        <span>${getCatName(i)}</span>
+        <span>${pct}%</span>
+      </div>
+      <div class="result-bar-bg">
+        <div class="result-bar-fill" id="bar-${i}" style="width:0%;background:${palette[i]};"></div>
+      </div>`;
+    resultBars.appendChild(div);
+    setTimeout(() => { document.getElementById(`bar-${i}`).style.width = pct + '%'; }, 60);
+  });
+
+  winnerLbl.textContent = `🏆 Prediction: ${getCatName(best)} (${(probs[best]*100).toFixed(1)}%)`;
+}
+
+/* predict from file */
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const url  = URL.createObjectURL(file);
+  dropZone.style.display = 'none';
+  previewImg.src = url;
+  previewImg.style.display = 'block';
+});
+
+predictBtn.addEventListener('click', () => {
+  if (previewImg.style.display === 'block' && previewImg.src) {
+    predictImage(previewImg);
+  } else {
+    alert('Please select an image to predict.');
+  }
+});
+
+/* predict from camera */
+predictCamBtn.addEventListener('click', () => {
+  ctx.drawImage(video, 0, 0, IMG_SIZE, IMG_SIZE);
+  dropZone.style.display = 'none';
+  previewImg.src = canvas.toDataURL();
+  previewImg.style.display = 'block';
+  predictImage(canvas);
+});
+
+/* drag & drop */
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0]; if (!file || !file.type.startsWith('image/')) return;
+  const url  = URL.createObjectURL(file);
+  dropZone.style.display = 'none';
+  previewImg.src = url;
+  previewImg.style.display = 'block';
+});
+
+/* ========================================================
+   INIT
+======================================================== */
+buildCaptureRows();
+loadMobileNet();
+</script>
+</body>
+</html>

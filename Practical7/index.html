@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Broncer — Indian Movie Recommender</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Karla:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --saffron: #e8650a;
+  --saffron-light: #fdf1e8;
+  --saffron-mid: #f4a96a;
+  --deep: #1a0f00;
+  --ink: #2d1f0e;
+  --muted: #8c7560;
+  --muted2: #c4b09a;
+  --bg: #faf7f2;
+  --card: #ffffff;
+  --border: #ede6da;
+  --border2: #d9cfc0;
+  --green: #1f6b3a;
+  --green-light: #eaf4ee;
+  --blue: #1a3f6b;
+  --blue-light: #e8f0f8;
+  --red: #991b1b;
+  --red-light: #fef2f2;
+  --shadow-sm: 0 1px 3px rgba(26,15,0,0.07);
+  --shadow: 0 3px 10px rgba(26,15,0,0.09), 0 1px 3px rgba(26,15,0,0.05);
+  --shadow-lg: 0 8px 24px rgba(26,15,0,0.12);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Karla', sans-serif;
+  min-height: 100vh;
+}
+
+/* Decorative top bar */
+.topbar {
+  height: 4px;
+  background: linear-gradient(90deg, #e8650a 0%, #f4a96a 35%, #138808 65%, #000080 100%);
+}
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
+
+/* ── Header ── */
+.header {
+  margin-bottom: 32px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.header-icon {
+  width: 52px; height: 52px;
+  background: var(--saffron);
+  border-radius: 14px;
+  display: grid; place-items: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow);
+}
+
+.header-text h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--deep);
+  line-height: 1.2;
+}
+
+.header-text p {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.header-pill {
+  margin-left: auto;
+  background: var(--saffron-light);
+  border: 1px solid var(--saffron-mid);
+  color: var(--saffron);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ── Steps ── */
+.steps { display: flex; flex-direction: column; gap: 0; }
+
+.step-wrap {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 18px;
+}
+
+.rail-num {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--border2);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted2);
+  display: grid; place-items: center;
+  transition: all 0.3s;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.step-wrap.active .rail-num { border-color: var(--saffron); background: var(--saffron); color: #fff; }
+.step-wrap.done   .rail-num { border-color: var(--green);   background: var(--green-light); color: var(--green); }
+
+.rail-line { width: 2px; flex: 1; min-height: 20px; background: var(--border); }
+.step-wrap:last-child .rail-line { display: none; }
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 12px 0 12px 0;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.step-wrap.active .card { border-color: var(--saffron-mid); box-shadow: var(--shadow); }
+
+.card-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fdfbf8;
+}
+
+.card-title { font-size: 14px; font-weight: 600; color: var(--deep); }
+
+.tag {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+
+.card-body { padding: 16px 18px; }
+
+.desc { font-size: 13px; color: var(--muted); line-height: 1.65; margin-bottom: 14px; }
+
+/* Code */
+pre {
+  background: #fdfaf6;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 15px;
+  font-family: 'Courier New', monospace;
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: #3d2e1e;
+  overflow-x: auto;
+  white-space: pre;
+  margin-bottom: 14px;
+}
+
+pre .kw  { color: #1a3f6b; font-weight: 600; }
+pre .fn  { color: var(--saffron); }
+pre .str { color: var(--green); }
+pre .cmt { color: var(--muted2); font-style: italic; }
+pre .num { color: #7b3fa6; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 8px; border: 1px solid transparent;
+  font-family: 'Karla', sans-serif; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; line-height: 1;
+}
+.btn-primary { background: var(--saffron); color: #fff; border-color: var(--saffron); }
+.btn-primary:hover:not(:disabled) { background: #d15a08; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost { background: var(--card); color: var(--ink); border-color: var(--border2); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg); border-color: var(--muted2); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* Progress */
+.prog { margin: 12px 0; display: none; }
+.prog.show { display: block; }
+.prog-meta {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--muted); margin-bottom: 5px;
+  font-family: 'Courier New', monospace;
+}
+.prog-track { height: 5px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.prog-fill { height: 100%; width: 0%; background: var(--saffron); border-radius: 4px; transition: width 0.25s; }
+
+/* Metrics */
+.mrow { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin: 12px 0; display: none; }
+.mrow.show { display: grid; }
+.mcard { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.mlabel { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 2px; font-weight: 600; }
+.mval { font-size: 20px; font-weight: 700; color: var(--saffron); font-family: 'Courier New', monospace; letter-spacing: -1px; }
+
+/* Status */
+.status { font-size: 12px; padding: 8px 12px; border-radius: 6px; margin-top: 12px; display: none; font-family: 'Courier New', monospace; line-height: 1.5; }
+.status.show { display: block; }
+.status.info { background: var(--blue-light); color: var(--blue); border-left: 3px solid var(--blue); }
+.status.ok   { background: var(--green-light); color: var(--green); border-left: 3px solid var(--green); }
+.status.err  { background: var(--red-light); color: var(--red); border-left: 3px solid var(--red); }
+
+/* Log */
+.log {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; max-height: 100px; overflow-y: auto;
+  font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.85;
+  color: var(--muted); margin-top: 12px; display: none;
+}
+.log.show { display: block; }
+.log .ts { color: var(--muted2); }
+.log .ok { color: var(--green); }
+
+/* ── Predict section ── */
+.section-label {
+  font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.8px;
+  text-transform: uppercase; margin-bottom: 10px;
+}
+
+/* Liked movies selector */
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.movie-chip {
+  padding: 8px 10px;
+  border: 1.5px solid var(--border2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--card);
+}
+
+.movie-chip:hover { border-color: var(--saffron-mid); background: var(--saffron-light); }
+.movie-chip.selected { border-color: var(--saffron); background: var(--saffron-light); }
+
+.chip-title { font-size: 12px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+.chip-genre {
+  font-size: 10px; color: var(--muted); margin-top: 3px;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.genre-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* Recommendations */
+.recs { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+.rec-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.rec-card.visible { opacity: 1; transform: translateY(0); }
+
+.rec-rank {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--muted2);
+  min-width: 28px;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.rec-body { flex: 1; }
+.rec-title { font-size: 14px; font-weight: 600; color: var(--deep); line-height: 1.2; }
+.rec-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+.rec-score-wrap {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;
+}
+
+.rec-score-val { font-size: 13px; font-weight: 700; color: var(--saffron); font-family: 'Courier New', monospace; }
+
+.rec-bar { width: 80px; height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.rec-fill { height: 100%; border-radius: 4px; background: var(--saffron); transition: width 0.5s ease; }
+
+.genre-badge {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 1px 7px; border-radius: 10px; margin-top: 4px;
+}
+
+/* Empty state */
+.empty-hint {
+  text-align: center; padding: 28px 16px;
+  color: var(--muted2); font-size: 13px;
+}
+.empty-hint .emoji { font-size: 28px; display: block; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="topbar"></div>
+<div class="wrap">
+
+  <div class="header">
+    <div class="header-icon">🎬</div>
+    <div class="header-text">
+      <h1>Broncer — Indian Cinema Recommender</h1>
+      <p>Content-based ML model · Train locally · Save · Reload · Predict</p>
+    </div>
+    <div class="header-pill">TF.JS</div>
+  </div>
+
+  <div class="steps">
+
+    <!-- ── STEP 1: Train ── -->
+    <div class="step-wrap active" id="row1">
+      <div class="rail">
+        <div class="rail-num" id="dot1">1</div>
+        <div class="rail-line"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Build &amp; train embedding model</div>
+          <div class="tag">content-based filtering</div>
+        </div>
+        <div class="card-body">
+          <p class="desc">
+            Encodes 40 Indian movies as feature vectors (genre, era, language, mood, rating).
+            Trains a dense autoencoder to learn a 6-dimensional latent space — similar movies cluster together.
+          </p>
+<pre><span class="cmt">// Each movie → 14-dim feature vector</span>
+<span class="cmt">// [genre_onehot×6, language×3, era×2, mood×2, rating_norm]</span>
+<span class="kw">const</span> encoder = tf.<span class="fn">sequential</span>({
+  layers: [
+    tf.layers.<span class="fn">dense</span>({ inputShape:[<span class="num">14</span>], units:<span class="num">10</span>, activation:<span class="str">'relu'</span> }),
+    tf.layers.<span class="fn">dense</span>({ units:<span class="num">6</span> }),             <span class="cmt">// latent space</span>
+    tf.layers.<span class="fn">dense</span>({ units:<span class="num">10</span>, activation:<span class="str">'relu'</span> }),
+    tf.layers.<span class="fn">dense</span>({ units:<span class="num">14</span>, activation:<span class="str">'sigmoid'</span> })  <span class="cmt">// reconstruct</span>
+  ]
+});
+model.<span class="fn">compile</span>({ optimizer:<span class="str">'adam'</span>, loss:<span class="str">'meanSquaredError'</span> });</pre>
+
+          <div class="prog" id="prog1">
+            <div class="prog-meta">
+              <span id="eTxt">Epoch 0 / 200</span>
+              <span id="lTxt">loss —</span>
+            </div>
+            <div class="prog-track"><div class="prog-fill" id="pFill"></div></div>
+          </div>
+
+          <div class="mrow" id="mrow1">
+            <div class="mcard"><div class="mlabel">MOVIES</div><div class="mval" id="mMovies">—</div></div>
+            <div class="mcard"><div class="mlabel">FINAL LOSS</div><div class="mval" id="mFLoss">—</div></div>
+            <div class="mcard"><div class="mlabel">LATENT DIM</div><div class="mval" id="mDim">—</div></div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btnTrain" onclick="trainModel()">▶ Train Model</button>
+          </div>
+          <div class="status" id="s1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 2: Save ── -->
+    <div class="step-wrap" id="row2">
+      <div class="rail">
+        <div class="rail-num" id="dot2">2</div>
+        <div class="rail-line"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Save model locally</div>
+          <div class="tag">indexedDB://</div>
+        </div>
+        <div class="card-body">
+          <p class="desc">Persists the trained autoencoder and all 40 movie embeddings to browser storage — survives page reloads.</p>
+<pre><span class="kw">await</span> model.<span class="fn">save</span>(<span class="str">'indexeddb://broncer-movies'</span>);
+
+<span class="cmt">// Save embeddings + movie catalog to localStorage</span>
+localStorage.<span class="fn">setItem</span>(<span class="str">'broncer-movie-data'</span>, JSON.<span class="fn">stringify</span>({
+  embeddings, movies
+}));</pre>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btnSave"  onclick="saveModel()"  disabled>💾 Save to IndexedDB</button>
+            <button class="btn btn-ghost"   id="btnDL"    onclick="dlModel()"    disabled>⬇ Download</button>
+          </div>
+          <div class="status" id="s2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Reload ── -->
+    <div class="step-wrap" id="row3">
+      <div class="rail">
+        <div class="rail-num" id="dot3">3</div>
+        <div class="rail-line"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Reload saved model</div>
+          <div class="tag">tf.loadLayersModel</div>
+        </div>
+        <div class="card-body">
+          <p class="desc">Restores the full autoencoder and movie embeddings from storage — ready for inference without retraining.</p>
+<pre><span class="kw">const</span> loaded = <span class="kw">await</span> tf.<span class="fn">loadLayersModel</span>(<span class="str">'indexeddb://broncer-movies'</span>);
+<span class="kw">const</span> data   = JSON.<span class="fn">parse</span>(localStorage.<span class="fn">getItem</span>(<span class="str">'broncer-movie-data'</span>));</pre>
+
+          <div class="log" id="reloadLog"></div>
+
+          <div class="btn-row" style="margin-top:12px">
+            <button class="btn btn-primary" id="btnReload" onclick="reloadModel()" disabled>↺ Reload from storage</button>
+          </div>
+          <div class="status" id="s3"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: Predict ── -->
+    <div class="step-wrap" id="row4">
+      <div class="rail">
+        <div class="rail-num" id="dot4">4</div>
+        <div class="rail-line"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Get recommendations</div>
+          <div class="tag">cosine similarity</div>
+        </div>
+        <div class="card-body">
+          <p class="desc">Select movies you like — the model encodes them, averages the embeddings, then finds the closest neighbors in latent space.</p>
+
+          <div class="section-label">Pick 1–5 movies you enjoy</div>
+          <div class="movie-grid" id="movieGrid">
+            <div class="empty-hint"><span class="emoji">⏳</span>Train the model first</div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btnRec" onclick="getRecommendations()" disabled>✦ Recommend</button>
+            <button class="btn btn-ghost"   id="btnClear" onclick="clearSelection()" disabled>Clear</button>
+          </div>
+
+          <div id="recsWrap"></div>
+          <div class="status" id="s4"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  INDIAN MOVIE CATALOG  (40 films)
+//  Features: [Drama, Action, Romance, Comedy, Thriller, BioPic,   ← genres (6)
+//             Hindi, Tamil, Telugu,                                ← language (3)
+//             Classic(pre-2000), Modern(2000+),                    ← era (2)
+//             Light, Intense,                                      ← mood (2)
+//             rating_norm]                                         ← 1 value
+//  Total: 14 features
+// ══════════════════════════════════════════════
+const GENRES = ['Drama','Action','Romance','Comedy','Thriller','BioPic'];
+const GENRE_COLORS = {
+  Drama:'#c0392b', Action:'#1a3f6b', Romance:'#c0504d',
+  Comedy:'#138808', Thriller:'#4a235a', BioPic:'#b5621a'
+};
+
+const MOVIES = [
+  // ─── Bollywood Classics ───
+  { id:0,  title:'Sholay',           year:1975, genre:'Action',  lang:'Hindi',  mood:'Intense', rating:9.1 },
+  { id:1,  title:'Deewar',           year:1975, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:8.3 },
+  { id:2,  title:'Mughal-E-Azam',    year:1960, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:8.2 },
+  { id:3,  title:'Guide',            year:1965, genre:'Drama',   lang:'Hindi',  mood:'Light',   rating:8.1 },
+  { id:4,  title:'Anand',            year:1971, genre:'Drama',   lang:'Hindi',  mood:'Light',   rating:8.5 },
+  // ─── Bollywood Modern ───
+  { id:5,  title:'Dilwale Dulhania Le Jayenge', year:1995, genre:'Romance', lang:'Hindi', mood:'Light',   rating:8.1 },
+  { id:6,  title:'Lagaan',           year:2001, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:8.1 },
+  { id:7,  title:'Dil Chahta Hai',   year:2001, genre:'Comedy',  lang:'Hindi',  mood:'Light',   rating:8.1 },
+  { id:8,  title:'Gangs of Wasseypur',year:2012,genre:'Thriller',lang:'Hindi',  mood:'Intense', rating:8.2 },
+  { id:9,  title:'3 Idiots',         year:2009, genre:'Comedy',  lang:'Hindi',  mood:'Light',   rating:8.4 },
+  { id:10, title:'Taare Zameen Par', year:2007, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:8.5 },
+  { id:11, title:'Queen',            year:2014, genre:'Drama',   lang:'Hindi',  mood:'Light',   rating:8.2 },
+  { id:12, title:'Dangal',           year:2016, genre:'BioPic',  lang:'Hindi',  mood:'Intense', rating:8.4 },
+  { id:13, title:'Andhadhun',        year:2018, genre:'Thriller',lang:'Hindi',  mood:'Intense', rating:8.3 },
+  { id:14, title:'Gully Boy',        year:2019, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:7.9 },
+  { id:15, title:'Zindagi Na Milegi Dobara',year:2011,genre:'Comedy',lang:'Hindi',mood:'Light', rating:8.2 },
+  { id:16, title:'PK',               year:2014, genre:'Comedy',  lang:'Hindi',  mood:'Light',   rating:8.1 },
+  { id:17, title:'Kabir Singh',      year:2019, genre:'Romance', lang:'Hindi',  mood:'Intense', rating:7.1 },
+  { id:18, title:'Sanju',            year:2018, genre:'BioPic',  lang:'Hindi',  mood:'Light',   rating:7.7 },
+  { id:19, title:'URI: The Surgical Strike',year:2019,genre:'Action',lang:'Hindi',mood:'Intense',rating:8.2 },
+  // ─── Tamil Cinema ───
+  { id:20, title:'Nayakan',          year:1987, genre:'Drama',   lang:'Tamil',  mood:'Intense', rating:8.6 },
+  { id:21, title:'Roja',             year:1992, genre:'Romance', lang:'Tamil',  mood:'Intense', rating:8.1 },
+  { id:22, title:'Anniyan',          year:2005, genre:'Thriller',lang:'Tamil',  mood:'Intense', rating:7.9 },
+  { id:23, title:'Vikram Vedha',     year:2017, genre:'Thriller',lang:'Tamil',  mood:'Intense', rating:8.4 },
+  { id:24, title:'Pariyerum Perumal',year:2018, genre:'Drama',   lang:'Tamil',  mood:'Intense', rating:8.6 },
+  { id:25, title:'Master',           year:2021, genre:'Action',  lang:'Tamil',  mood:'Intense', rating:7.8 },
+  { id:26, title:'Jai Bhim',         year:2021, genre:'Drama',   lang:'Tamil',  mood:'Intense', rating:8.8 },
+  { id:27, title:'Soorarai Pottru',  year:2020, genre:'BioPic',  lang:'Tamil',  mood:'Intense', rating:8.8 },
+  // ─── Telugu Cinema ───
+  { id:28, title:'Magadheera',       year:2009, genre:'Action',  lang:'Telugu', mood:'Intense', rating:8.0 },
+  { id:29, title:'Eega',             year:2012, genre:'Action',  lang:'Telugu', mood:'Light',   rating:7.9 },
+  { id:30, title:'Arjun Reddy',      year:2017, genre:'Romance', lang:'Telugu', mood:'Intense', rating:8.1 },
+  { id:31, title:'Baahubali: The Beginning',year:2015,genre:'Action',lang:'Telugu',mood:'Intense',rating:8.0},
+  { id:32, title:'Baahubali 2',      year:2017, genre:'Action',  lang:'Telugu', mood:'Intense', rating:8.2 },
+  { id:33, title:'RRR',              year:2022, genre:'Action',  lang:'Telugu', mood:'Intense', rating:7.9 },
+  { id:34, title:'Pushpa: The Rise', year:2021, genre:'Action',  lang:'Telugu', mood:'Intense', rating:7.6 },
+  // ─── Mixed / Pan-India ───
+  { id:35, title:'Drishyam',         year:2013, genre:'Thriller',lang:'Hindi',  mood:'Intense', rating:8.3 },
+  { id:36, title:'Tumbbad',          year:2018, genre:'Thriller',lang:'Hindi',  mood:'Intense', rating:8.3 },
+  { id:37, title:'Padmaavat',        year:2018, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:7.0 },
+  { id:38, title:'Shershaah',        year:2021, genre:'BioPic',  lang:'Hindi',  mood:'Intense', rating:8.4 },
+  { id:39, title:'Kantara',          year:2022, genre:'Drama',   lang:'Hindi',  mood:'Intense', rating:9.0 },
+];
+
+const LANG_MAP  = { Hindi:0, Tamil:1, Telugu:2 };
+const MOOD_MAP  = { Light:0, Intense:1 };
+
+function movieToVec(m) {
+  const g = new Array(6).fill(0);
+  g[GENRES.indexOf(m.genre)] = 1;
+  const l = new Array(3).fill(0);
+  l[LANG_MAP[m.lang]] = 1;
+  const era = m.year < 2000 ? [1,0] : [0,1];
+  const mood = m.mood === 'Light' ? [1,0] : [0,1];
+  const rating = (m.rating - 7) / 2.5;
+  return [...g, ...l, ...era, ...mood, rating];
+}
+
+// ── State ──────────────────────────────────────────────────
+let trainedModel = null;
+let loadedModel  = null;
+let movieEmbeddings = [];   // Array of Float32Array (dim=6 each)
+let savedData    = null;
+const MODEL_KEY  = 'indexeddb://broncer-movies';
+const EPOCHS     = 200;
+const LATENT_DIM = 6;
+
+// ── STEP 1: Train ──────────────────────────────────────────
+async function trainModel() {
+  const btn = document.getElementById('btnTrain');
+  btn.disabled = true; btn.textContent = '⏳ Training…';
+  setStatus('s1','info','Encoding 40 Indian movies into feature vectors…');
+  await tf.nextFrame();
+
+  const vecs = MOVIES.map(movieToVec);
+  const xs = tf.tensor2d(vecs);
+
+  trainedModel = tf.sequential({ layers: [
+    tf.layers.dense({ inputShape:[14], units:10, activation:'relu' }),
+    tf.layers.dense({ units: LATENT_DIM }),
+    tf.layers.dense({ units:10, activation:'relu' }),
+    tf.layers.dense({ units:14, activation:'sigmoid' }),
+  ]});
+  trainedModel.compile({ optimizer:'adam', loss:'meanSquaredError' });
+
+  document.getElementById('prog1').classList.add('show');
+  document.getElementById('mMovies').textContent = MOVIES.length;
+  document.getElementById('mDim').textContent    = LATENT_DIM;
+
+  let lastLoss = 0;
+  await trainedModel.fit(xs, xs, {
+    epochs: EPOCHS, batchSize: 8, shuffle: true,
+    callbacks: {
+      onEpochEnd: async (e, logs) => {
+        lastLoss = logs.loss;
+        const pct = ((e+1)/EPOCHS*100).toFixed(0);
+        document.getElementById('pFill').style.width = pct+'%';
+        document.getElementById('eTxt').textContent  = `Epoch ${e+1} / ${EPOCHS}`;
+        document.getElementById('lTxt').textContent  = `loss ${logs.loss.toFixed(5)}`;
+        if ((e+1) % 20 === 0) await tf.nextFrame();
+      }
+    }
+  });
+
+  // Extract embeddings using the encoder half
+  const encoderOut = tf.model({
+    inputs: trainedModel.inputs,
+    outputs: trainedModel.layers[1].output
+  });
+
+  const allEmbs = encoderOut.predict(xs);
+  const embData = await allEmbs.array();
+  movieEmbeddings = embData;
+
+  xs.dispose(); allEmbs.dispose();
+
+  document.getElementById('mFLoss').textContent = lastLoss.toFixed(5);
+  document.getElementById('mrow1').classList.add('show');
+
+  markDone('row1','dot1');
+  setStatus('s1','ok',`✓ Trained on ${MOVIES.length} Indian movies · final loss: ${lastLoss.toFixed(5)}`);
+  btn.textContent = '✓ Trained';
+
+  document.getElementById('btnSave').disabled = false;
+  document.getElementById('btnDL').disabled   = false;
+  markActive('row2');
+}
+
+// ── STEP 2: Save ──────────────────────────────────────────
+async function saveModel() {
+  if (!trainedModel) return;
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await trainedModel.save(MODEL_KEY);
+    localStorage.setItem('broncer-movie-data', JSON.stringify({
+      embeddings: movieEmbeddings,
+      movies: MOVIES
+    }));
+    markDone('row2','dot2');
+    setStatus('s2','ok','✓ Model + embeddings saved to IndexedDB & localStorage');
+    btn.textContent = '✓ Saved';
+    document.getElementById('btnReload').disabled = false;
+    markActive('row3');
+  } catch(e) {
+    setStatus('s2','err','✗ '+e.message);
+    btn.disabled = false; btn.textContent = '💾 Save to IndexedDB';
+  }
+}
+
+async function dlModel() {
+  if (!trainedModel) return;
+  try { await trainedModel.save('downloads://broncer-movies'); }
+  catch(e) { setStatus('s2','err','✗ '+e.message); }
+}
+
+// ── STEP 3: Reload ────────────────────────────────────────
+async function reloadModel() {
+  const btn = document.getElementById('btnReload');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  const log = document.getElementById('reloadLog');
+  log.classList.add('show');
+  try {
+    addLog(log,'info','Connecting to IndexedDB…');
+    await delay(250);
+    loadedModel = await tf.loadLayersModel(MODEL_KEY);
+    addLog(log,'ok','Autoencoder weights restored (14→10→6→10→14)');
+    await delay(180);
+    const raw = localStorage.getItem('broncer-movie-data');
+    if (raw) {
+      savedData = JSON.parse(raw);
+      movieEmbeddings = savedData.embeddings;
+      addLog(log,'ok',`${savedData.movies.length} movie embeddings loaded from localStorage`);
+    }
+    await delay(180);
+    addLog(log,'ok','Model ready for cosine similarity search ✓');
+    markDone('row3','dot3');
+    setStatus('s3','ok','✓ Reloaded. Select movies below to get recommendations.');
+    btn.textContent = '✓ Reloaded';
+    buildMovieGrid();
+    document.getElementById('btnRec').disabled   = false;
+    document.getElementById('btnClear').disabled = false;
+    markActive('row4');
+  } catch(e) {
+    addLog(log,'err','✗ '+e.message);
+    setStatus('s3','err','✗ Load failed — save first. '+e.message);
+    btn.disabled = false; btn.textContent = '↺ Reload from storage';
+  }
+}
+
+// ── STEP 4: Predict ───────────────────────────────────────
+let selectedIds = new Set();
+
+function buildMovieGrid() {
+  const grid = document.getElementById('movieGrid');
+  grid.innerHTML = '';
+  const movies = (savedData ? savedData.movies : MOVIES);
+  movies.forEach(m => {
+    const chip = document.createElement('div');
+    chip.className = 'movie-chip';
+    chip.dataset.id = m.id;
+    chip.innerHTML = `
+      <div class="chip-title">${m.title}</div>
+      <div class="chip-genre">
+        <span class="genre-dot" style="background:${GENRE_COLORS[m.genre]}"></span>
+        ${m.genre} · ${m.lang}
+      </div>`;
+    chip.onclick = () => toggleChip(chip, m.id);
+    grid.appendChild(chip);
+  });
+}
+
+function toggleChip(chip, id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    chip.classList.remove('selected');
+  } else {
+    if (selectedIds.size >= 5) return;
+    selectedIds.add(id);
+    chip.classList.add('selected');
+  }
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.movie-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('recsWrap').innerHTML = '';
+  document.getElementById('s4').className = 'status';
+}
+
+function cosineSim(a, b) {
+  let dot=0, na=0, nb=0;
+  for (let i=0; i<a.length; i++) { dot+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-9);
+}
+
+function getRecommendations() {
+  if (selectedIds.size === 0) {
+    setStatus('s4','info','Please select at least one movie.');
+    return;
+  }
+
+  // Average embedding of selected movies
+  const dim = movieEmbeddings[0].length;
+  const avg = new Array(dim).fill(0);
+  selectedIds.forEach(id => {
+    const emb = movieEmbeddings[id];
+    for (let i=0;i<dim;i++) avg[i] += emb[i];
+  });
+  for (let i=0;i<dim;i++) avg[i] /= selectedIds.size;
+
+  // Score all movies
+  const scores = MOVIES.map(m => ({
+    movie: m,
+    score: cosineSim(avg, movieEmbeddings[m.id])
+  })).filter(x => !selectedIds.has(x.movie.id))
+     .sort((a,b) => b.score - a.score)
+     .slice(0, 6);
+
+  // Render
+  const wrap = document.getElementById('recsWrap');
+  wrap.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.8px;margin:16px 0 10px;text-transform:uppercase;">Recommended for You</div><div class="recs" id="recList"></div>';
+  const list = document.getElementById('recList');
+
+  scores.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'rec-card';
+    const pct = (s.score * 100).toFixed(0);
+    card.innerHTML = `
+      <div class="rec-rank">${i+1}</div>
+      <div class="rec-body">
+        <div class="rec-title">${s.movie.title}</div>
+        <div class="rec-meta">${s.movie.year} · ${s.movie.lang} · ⭐ ${s.movie.rating}</div>
+        <span class="genre-badge" style="background:${GENRE_COLORS[s.movie.genre]}18;color:${GENRE_COLORS[s.movie.genre]};border:1px solid ${GENRE_COLORS[s.movie.genre]}30">${s.movie.genre}</span>
+      </div>
+      <div class="rec-score-wrap">
+        <div class="rec-score-val">${pct}%</div>
+        <div class="rec-bar"><div class="rec-fill" style="width:0%" data-w="${pct}"></div></div>
+      </div>`;
+    list.appendChild(card);
+    setTimeout(() => {
+      card.classList.add('visible');
+      card.querySelector('.rec-fill').style.width = pct+'%';
+    }, i * 80 + 50);
+  });
+
+  setStatus('s4','ok',`✓ Top ${scores.length} recommendations generated using cosine similarity in latent space.`);
+  markDone('row4','dot4');
+}
+
+// ── Helpers ───────────────────────────────────────────────
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `status show ${type}`;
+  el.textContent = msg;
+}
+
+function markDone(rowId, dotId) {
+  document.getElementById(rowId).classList.remove('active');
+  document.getElementById(rowId).classList.add('done');
+  document.getElementById(dotId).textContent = '✓';
+}
+
+function markActive(rowId) {
+  document.getElementById(rowId).classList.add('active');
+}
+
+function addLog(el, type, msg) {
+  const ts = new Date().toLocaleTimeString('en',{hour12:false});
+  const div = document.createElement('div');
+  div.innerHTML = `<span class="ts">[${ts}]</span> <span class="${type==='ok'?'ok':''}">${msg}</span>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function delay(ms) { return new Promise(r=>setTimeout(r,ms)); }
+</script>
+</body>
+</html>

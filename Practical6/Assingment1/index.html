@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Pose Detection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: sans-serif;
+    color: #fff;
+  }
+
+  h2 { margin-bottom: 12px; font-size: 1.2rem; color: #ccc; }
+
+  canvas { border-radius: 10px; display: block; }
+
+  #status {
+    margin-top: 12px;
+    font-size: .85rem;
+    color: #888;
+  }
+
+  button {
+    margin-top: 14px;
+    padding: 10px 32px;
+    font-size: .95rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background .2s;
+  }
+  button.on  { background: #22c55e; color: #fff; }
+  button.off { background: #ef4444; color: #fff; }
+</style>
+</head>
+<body>
+
+<h2>🧍 PoseNet — Skeleton Detection</h2>
+<div id="canvas-wrap"></div>
+<div id="status">Press Start to begin</div>
+<button class="on" id="btn" onclick="toggle()">▶ Start Camera</button>
+
+<script>
+let running = false, poseNet, video, poses = [];
+
+const JOINTS = [
+  ['nose','leftEye'],['nose','rightEye'],
+  ['leftEye','leftEar'],['rightEye','rightEar'],
+  ['leftShoulder','rightShoulder'],
+  ['leftShoulder','leftElbow'],['rightShoulder','rightElbow'],
+  ['leftElbow','leftWrist'],['rightElbow','rightWrist'],
+  ['leftShoulder','leftHip'],['rightShoulder','rightHip'],
+  ['leftHip','rightHip'],
+  ['leftHip','leftKnee'],['rightHip','rightKnee'],
+  ['leftKnee','leftAnkle'],['rightKnee','rightAnkle']
+];
+
+function toggle() {
+  running ? stop() : start();
+}
+
+function start() {
+  running = true;
+  document.getElementById('btn').textContent = '⏹ Stop Camera';
+  document.getElementById('btn').className = 'off';
+  document.getElementById('status').textContent = 'Loading model…';
+
+  new p5(s => {
+    s.setup = () => {
+      const cnv = s.createCanvas(640, 480);
+      cnv.parent('canvas-wrap');
+
+      video = s.createCapture(s.VIDEO);
+      video.size(640, 480);
+      video.hide();
+
+      poseNet = ml5.poseNet(video, () => {
+        document.getElementById('status').textContent = '✅ Model ready — detecting poses';
+      });
+      poseNet.on('pose', r => poses = r);
+    };
+
+    s.draw = () => {
+      // Mirror the video
+      s.push();
+      s.translate(640, 0);
+      s.scale(-1, 1);
+      s.image(video, 0, 0, 640, 480);
+      s.pop();
+
+      if (!poses.length) return;
+
+      const kp = {};
+      poses[0].pose.keypoints.forEach(k => kp[k.part] = k);
+
+      // Draw skeleton
+      s.strokeWeight(3);
+      JOINTS.forEach(([a, b]) => {
+        const pa = kp[a], pb = kp[b];
+        if (pa && pb && pa.score > 0.5 && pb.score > 0.5) {
+          s.stroke(0, 255, 180);
+          s.line(640 - pa.position.x, pa.position.y,
+                 640 - pb.position.x, pb.position.y);
+        }
+      });
+
+      // Draw keypoints
+      poses[0].pose.keypoints.forEach(k => {
+        if (k.score > 0.5) {
+          s.noStroke();
+          s.fill(255, 80, 80);
+          s.circle(640 - k.position.x, k.position.y, 10);
+        }
+      });
+    };
+  });
+}
+
+function stop() {
+  running = false;
+  document.getElementById('btn').textContent = '▶ Start Camera';
+  document.getElementById('btn').className = 'on';
+  document.getElementById('status').textContent = 'Press Start to begin';
+  if (video) video.remove();
+  const wrap = document.getElementById('canvas-wrap');
+  wrap.innerHTML = '';
+  poses = [];
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Train & Save Model</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<style>
+  body { font-family: monospace; max-width: 500px; margin: 60px auto; padding: 0 20px; background: #f9f9f9; color: #222; }
+  h2 { font-size: 16px; margin-bottom: 4px; }
+  p  { font-size: 12px; color: #777; margin-bottom: 20px; }
+  button {
+    padding: 10px 22px; background: #2d6a4f; color: #fff;
+    border: none; border-radius: 6px; font-size: 13px;
+    cursor: pointer; font-family: monospace;
+  }
+  button:hover { background: #245a41; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  pre {
+    background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 14px; font-size: 12px; line-height: 1.8;
+    margin-top: 18px; white-space: pre-wrap; min-height: 40px;
+  }
+  .ok  { color: #2d6a4f; }
+  .err { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<h2>Train a model → Save to localStorage</h2>
+<p>Trains a tiny linear model on y = 2x + 1, then saves weights to localStorage.</p>
+
+<button id="btn" onclick="run()">▶ Train &amp; Save</button>
+
+<pre id="log">Click the button to start...</pre>
+
+<script>
+const log = document.getElementById('log');
+
+function print(msg, cls = '') {
+  log.innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+async function run() {
+  document.getElementById('btn').disabled = true;
+  log.innerHTML = '';
+
+  // 1. Build model
+  print('Building model: 1 input → dense(1)...');
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+  model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+  print('Model built ✓');
+
+  // 2. Training data  (y = 2x + 1)
+  const xs = tf.tensor2d([-2, -1, 0, 1, 2, 3], [6, 1]);
+  const ys = tf.tensor2d([-3, -1,  1, 3, 5, 7], [6, 1]);
+  print('\nTraining on y = 2x + 1 ...');
+
+  await model.fit(xs, ys, {
+    epochs: 100,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        if ((epoch + 1) % 25 === 0)
+          print(`  epoch ${epoch + 1}/100  loss: ${logs.loss.toFixed(6)}`);
+      }
+    }
+  });
+  print('Training done ✓', 'ok');
+
+  // 3. Save weights to localStorage
+  print('\nSaving weights to localStorage...');
+  const weights = model.getWeights();
+  const w = weights[0].dataSync()[0];   // slope
+  const b = weights[1].dataSync()[0];   // bias
+  localStorage.setItem('model_w', w);
+  localStorage.setItem('model_b', b);
+  print(`Saved → w: ${w.toFixed(4)},  b: ${b.toFixed(4)}`, 'ok');
+
+  // 4. Quick test
+  const pred = model.predict(tf.tensor2d([4], [1, 1]));
+  const val  = pred.dataSync()[0].toFixed(4);
+  print(`\nTest prediction for x=4 → ${val}  (expected ≈ 9)`);
+
+  print('\nDone! Weights stored in localStorage ✓', 'ok');
+  document.getElementById('btn').disabled = false;
+}
+</script>
+</body>
+</html>

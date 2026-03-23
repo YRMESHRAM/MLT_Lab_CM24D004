@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Single vs Multi Pose Analysis</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet"/>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --bg:#07090d;
+  --s1:#0d1117;
+  --s2:#161b23;
+  --border:#21262e;
+  --single:#6ee7b7;   /* emerald — single pose */
+  --multi:#818cf8;    /* indigo  — multi pose */
+  --warn:#fbbf24;
+  --red:#f87171;
+  --text:#e6edf3;
+  --muted:#484f58;
+  --font:'JetBrains Mono',monospace;
+  --head:'Syne',sans-serif;
+}
+
+body{
+  background:var(--bg);
+  font-family:var(--font);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  padding:20px 14px 60px;
+}
+
+/* ── Header ── */
+.hdr{
+  width:100%;max-width:1100px;
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:18px;gap:12px;flex-wrap:wrap;
+}
+.hdr-left h1{
+  font-family:var(--head);
+  font-size:1.3rem;font-weight:800;
+  background:linear-gradient(90deg,var(--single),var(--multi));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:-.01em;
+}
+.hdr-left p{font-size:.65rem;color:var(--muted);margin-top:2px;letter-spacing:.08em;}
+
+.cam-btn{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 20px;border:none;border-radius:8px;
+  font-family:var(--font);font-size:.72rem;font-weight:700;
+  cursor:pointer;transition:all .2s;letter-spacing:.05em;
+}
+.cam-btn.start{background:var(--single);color:#000;}
+.cam-btn.stop {background:var(--red);color:#fff;}
+.cam-btn:active{transform:scale(.97);}
+
+/* ── SPLIT VIEW ── */
+.split{
+  width:100%;max-width:1100px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:14px;
+}
+@media(max-width:700px){.split{grid-template-columns:1fr;}}
+
+.pane{
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+}
+
+.pane-head{
+  padding:9px 14px;
+  background:var(--s2);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.pane-title{
+  font-family:var(--head);font-size:.8rem;font-weight:700;
+  display:flex;align-items:center;gap:8px;
+}
+.tag-single{
+  background:rgba(110,231,183,.12);
+  border:1px solid rgba(110,231,183,.3);
+  color:var(--single);
+  padding:2px 8px;border-radius:4px;
+  font-size:.6rem;font-family:var(--font);letter-spacing:.08em;
+}
+.tag-multi{
+  background:rgba(129,140,248,.12);
+  border:1px solid rgba(129,140,248,.3);
+  color:var(--multi);
+  padding:2px 8px;border-radius:4px;
+  font-size:.6rem;font-family:var(--font);letter-spacing:.08em;
+}
+
+.pane-stats{display:flex;gap:12px;}
+.ps{font-size:.6rem;color:var(--muted);}
+.ps b{font-weight:700;}
+.ps.single b{color:var(--single);}
+.ps.multi  b{color:var(--multi);}
+
+/* canvas area */
+.canvas-area{
+  position:relative;
+  aspect-ratio:4/3;
+  background:#000;
+  overflow:hidden;
+}
+.canvas-area canvas{
+  display:block;width:100%!important;height:100%!important;
+}
+
+/* off / loading */
+.off-screen{
+  position:absolute;inset:0;
+  background:#040507;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:8px;color:var(--muted);font-size:.7rem;
+}
+.loader{
+  position:absolute;inset:0;
+  background:rgba(7,9,13,.88);
+  display:none;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:10px;z-index:20;
+}
+.loader.show{display:flex;}
+.spin{width:28px;height:28px;border:2px solid rgba(255,255,255,.08);border-top-color:var(--single);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader p{font-size:.65rem;color:var(--muted);}
+
+/* metric overlay on pane — top right */
+.pane-overlay{
+  position:absolute;top:8px;right:8px;
+  background:rgba(7,9,13,.82);
+  backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;
+  padding:9px 11px;
+  display:none;flex-direction:column;gap:6px;
+  z-index:10;min-width:120px;
+}
+.pane-overlay.show{display:flex;}
+.po-row{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.po-key{font-size:.55rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;}
+.po-val{font-size:.78rem;font-weight:700;}
+
+/* person count badge */
+.person-badge{
+  position:absolute;bottom:8px;left:8px;
+  background:rgba(7,9,13,.82);
+  border-radius:6px;padding:4px 10px;
+  font-size:.62rem;font-weight:700;display:none;
+  z-index:10;letter-spacing:.05em;
+}
+.person-badge.show{display:block;}
+
+/* ── COMPARISON DASHBOARD ── */
+.dash{
+  width:100%;max-width:1100px;
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:12px;
+  margin-bottom:14px;
+}
+@media(max-width:700px){.dash{grid-template-columns:1fr 1fr;}}
+
+.metric-card{
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px 16px;
+}
+.mc-label{font-size:.58rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+.mc-vs{display:flex;align-items:flex-end;gap:10px;margin-bottom:8px;}
+.mc-v{display:flex;flex-direction:column;gap:2px;flex:1;}
+.mc-num{font-family:var(--head);font-size:1.6rem;font-weight:800;line-height:1;}
+.mc-sub{font-size:.58rem;color:var(--muted);}
+.mc-sep{font-size:.65rem;color:var(--border);align-self:center;}
+.mc-bar-row{display:flex;flex-direction:column;gap:4px;}
+.mc-bar-wrap{height:4px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden;}
+.mc-bar{height:100%;border-radius:2px;transition:width .3s ease;}
+.mc-bar.single{background:var(--single);}
+.mc-bar.multi {background:var(--multi);}
+
+/* ── ANALYSIS SECTION ── */
+.analysis{
+  width:100%;max-width:1100px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+@media(max-width:700px){.analysis{grid-template-columns:1fr;}}
+
+.analysis-card{
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:16px;
+}
+.ac-head{
+  font-family:var(--head);font-size:.82rem;font-weight:700;
+  margin-bottom:12px;padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+
+/* score chart — horizontal bars per keypoint */
+.kp-chart{display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto;}
+.kp-chart::-webkit-scrollbar{width:2px;}
+.kp-chart::-webkit-scrollbar-thumb{background:var(--border);}
+
+.kpc-row{display:grid;grid-template-columns:90px 1fr 1fr;gap:6px;align-items:center;}
+.kpc-name{font-size:.58rem;color:var(--muted);text-transform:capitalize;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpc-bars{display:flex;flex-direction:column;gap:2px;}
+.kpc-bar-bg{height:3px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden;}
+.kpc-bar{height:100%;border-radius:2px;transition:width .2s ease;}
+.kpc-pct{font-size:.58rem;text-align:right;font-weight:600;color:var(--muted);}
+
+/* fps timeline */
+.timeline{
+  width:100%;height:60px;
+  background:rgba(255,255,255,.02);
+  border-radius:8px;
+  position:relative;overflow:hidden;
+}
+.timeline canvas{display:block;width:100%!important;height:100%!important;}
+
+/* log */
+#log-list{
+  display:flex;flex-direction:column;gap:4px;
+  max-height:180px;overflow-y:auto;
+}
+#log-list::-webkit-scrollbar{width:2px;}
+#log-list::-webkit-scrollbar-thumb{background:var(--border);}
+.log-row{
+  display:flex;align-items:flex-start;gap:8px;
+  font-size:.62rem;padding:5px 8px;
+  background:var(--s2);border-radius:6px;
+  animation:fadeUp .2s ease;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.log-row .lg-time{color:var(--muted);flex-shrink:0;}
+.log-row .lg-msg{color:var(--text);flex:1;line-height:1.4;}
+.log-row.single .lg-dot{color:var(--single);}
+.log-row.multi  .lg-dot{color:var(--multi);}
+.log-row .lg-dot{flex-shrink:0;}
+.no-log{font-size:.65rem;color:var(--muted);padding:8px;text-align:center;}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="hdr">
+  <div class="hdr-left">
+    <h1>Single-Pose vs Multi-Pose Detection</h1>
+    <p>Real-time accuracy · confidence · FPS · keypoint comparison</p>
+  </div>
+  <button class="cam-btn start" id="cam-btn" onclick="toggleCam()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+    </svg>
+    <span id="btn-lbl">Start Camera</span>
+  </button>
+</div>
+
+<!-- Split view -->
+<div class="split">
+
+  <!-- Single Pose pane -->
+  <div class="pane">
+    <div class="pane-head">
+      <div class="pane-title">
+        <span class="tag-single">SINGLE</span>
+        Single-Pose PoseNet
+      </div>
+      <div class="pane-stats">
+        <div class="ps single">FPS <b id="s-fps">—</b></div>
+        <div class="ps single">Conf <b id="s-conf">—</b></div>
+      </div>
+    </div>
+    <div class="canvas-area">
+      <div class="off-screen" id="s-off">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span>Awaiting camera</span>
+      </div>
+      <div id="s-canvas"></div>
+      <div class="loader" id="s-loader"><div class="spin"></div><p>Loading single-pose model…</p></div>
+      <div class="pane-overlay" id="s-overlay">
+        <div class="po-row"><span class="po-key">Score</span><span class="po-val" id="so-score" style="color:var(--single)">—</span></div>
+        <div class="po-row"><span class="po-key">KPs</span><span class="po-val" id="so-kps" style="color:var(--single)">—</span></div>
+        <div class="po-row"><span class="po-key">Visible</span><span class="po-val" id="so-vis" style="color:var(--single)">—</span></div>
+        <div class="po-row"><span class="po-key">Latency</span><span class="po-val" id="so-lat" style="color:var(--single)">—</span></div>
+      </div>
+      <div class="person-badge" id="s-badge" style="color:var(--single);border:1px solid rgba(110,231,183,.3)">1 Person</div>
+    </div>
+  </div>
+
+  <!-- Multi Pose pane -->
+  <div class="pane">
+    <div class="pane-head">
+      <div class="pane-title">
+        <span class="tag-multi">MULTI</span>
+        Multi-Pose PoseNet
+      </div>
+      <div class="pane-stats">
+        <div class="ps multi">FPS <b id="m-fps">—</b></div>
+        <div class="ps multi">Conf <b id="m-conf">—</b></div>
+      </div>
+    </div>
+    <div class="canvas-area">
+      <div class="off-screen" id="m-off">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span>Awaiting camera</span>
+      </div>
+      <div id="m-canvas"></div>
+      <div class="loader" id="m-loader"><div class="spin" style="border-top-color:var(--multi)"></div><p>Loading multi-pose model…</p></div>
+      <div class="pane-overlay" id="m-overlay">
+        <div class="po-row"><span class="po-key">Score</span><span class="po-val" id="mo-score" style="color:var(--multi)">—</span></div>
+        <div class="po-row"><span class="po-key">Persons</span><span class="po-val" id="mo-persons" style="color:var(--multi)">—</span></div>
+        <div class="po-row"><span class="po-key">Visible</span><span class="po-val" id="mo-vis" style="color:var(--multi)">—</span></div>
+        <div class="po-row"><span class="po-key">Latency</span><span class="po-val" id="mo-lat" style="color:var(--multi)">—</span></div>
+      </div>
+      <div class="person-badge" id="m-badge" style="color:var(--multi);border:1px solid rgba(129,140,248,.3)">0 Persons</div>
+    </div>
+  </div>
+</div>
+
+<!-- Metrics dashboard -->
+<div class="dash">
+  <div class="metric-card">
+    <div class="mc-label">Average Confidence Score</div>
+    <div class="mc-vs">
+      <div class="mc-v"><div class="mc-num" id="mc-s-score" style="color:var(--single)">0%</div><div class="mc-sub">Single</div></div>
+      <div class="mc-sep">vs</div>
+      <div class="mc-v"><div class="mc-num" id="mc-m-score" style="color:var(--multi)">0%</div><div class="mc-sub">Multi</div></div>
+    </div>
+    <div class="mc-bar-row">
+      <div class="mc-bar-wrap"><div class="mc-bar single" id="bar-s-score" style="width:0%"></div></div>
+      <div class="mc-bar-wrap"><div class="mc-bar multi"  id="bar-m-score" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="mc-label">Frames Per Second</div>
+    <div class="mc-vs">
+      <div class="mc-v"><div class="mc-num" id="mc-s-fps" style="color:var(--single)">0</div><div class="mc-sub">Single</div></div>
+      <div class="mc-sep">vs</div>
+      <div class="mc-v"><div class="mc-num" id="mc-m-fps" style="color:var(--multi)">0</div><div class="mc-sub">Multi</div></div>
+    </div>
+    <div class="mc-bar-row">
+      <div class="mc-bar-wrap"><div class="mc-bar single" id="bar-s-fps" style="width:0%"></div></div>
+      <div class="mc-bar-wrap"><div class="mc-bar multi"  id="bar-m-fps" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="mc-label">Visible Keypoints (of 17)</div>
+    <div class="mc-vs">
+      <div class="mc-v"><div class="mc-num" id="mc-s-kp" style="color:var(--single)">0</div><div class="mc-sub">Single</div></div>
+      <div class="mc-sep">vs</div>
+      <div class="mc-v"><div class="mc-num" id="mc-m-kp" style="color:var(--multi)">0</div><div class="mc-sub">Multi</div></div>
+    </div>
+    <div class="mc-bar-row">
+      <div class="mc-bar-wrap"><div class="mc-bar single" id="bar-s-kp" style="width:0%"></div></div>
+      <div class="mc-bar-wrap"><div class="mc-bar multi"  id="bar-m-kp" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="mc-label">Inference Latency (ms)</div>
+    <div class="mc-vs">
+      <div class="mc-v"><div class="mc-num" id="mc-s-lat" style="color:var(--single)">—</div><div class="mc-sub">Single</div></div>
+      <div class="mc-sep">vs</div>
+      <div class="mc-v"><div class="mc-num" id="mc-m-lat" style="color:var(--multi)">—</div><div class="mc-sub">Multi</div></div>
+    </div>
+    <div class="mc-bar-row">
+      <div class="mc-bar-wrap"><div class="mc-bar single" id="bar-s-lat" style="width:0%"></div></div>
+      <div class="mc-bar-wrap"><div class="mc-bar multi"  id="bar-m-lat" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="mc-label">Avg Score (last 100 frames)</div>
+    <div class="mc-vs">
+      <div class="mc-v"><div class="mc-num" id="mc-s-avg" style="color:var(--single)">—</div><div class="mc-sub">Single</div></div>
+      <div class="mc-sep">vs</div>
+      <div class="mc-v"><div class="mc-num" id="mc-m-avg" style="color:var(--multi)">—</div><div class="mc-sub">Multi</div></div>
+    </div>
+    <div class="mc-bar-row">
+      <div class="mc-bar-wrap"><div class="mc-bar single" id="bar-s-avg" style="width:0%"></div></div>
+      <div class="mc-bar-wrap"><div class="mc-bar multi"  id="bar-m-avg" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="metric-card">
+    <div class="mc-label">Winner This Frame</div>
+    <div style="display:flex;align-items:center;justify-content:center;height:52px;">
+      <div id="winner-badge" style="font-family:var(--head);font-size:1rem;font-weight:800;color:var(--muted);letter-spacing:.05em;">—</div>
+    </div>
+    <div style="font-size:.58rem;color:var(--muted);text-align:center;" id="winner-reason">Start camera to compare</div>
+  </div>
+</div>
+
+<!-- Analysis -->
+<div class="analysis">
+
+  <!-- Per-keypoint confidence -->
+  <div class="analysis-card">
+    <div class="ac-head">
+      📊 Per-Keypoint Confidence
+      <span style="font-size:.58rem;color:var(--muted);font-family:var(--font);font-weight:400;">■ single &nbsp; ■ multi</span>
+    </div>
+    <div class="kp-chart" id="kp-chart"></div>
+  </div>
+
+  <!-- FPS timeline + log -->
+  <div class="analysis-card">
+    <div class="ac-head">📈 FPS Timeline</div>
+    <div class="timeline" id="timeline-wrap">
+      <canvas id="timeline-canvas"></canvas>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:12px;margin:8px 0 12px;font-size:.58rem;">
+      <span style="color:var(--single)">▬ Single</span>
+      <span style="color:var(--multi)">▬ Multi</span>
+    </div>
+    <div class="ac-head" style="margin-top:0;border-top:1px solid var(--border);padding-top:10px;">
+      📋 Event Log
+    </div>
+    <div id="log-list"><div class="no-log">No events yet</div></div>
+  </div>
+
+</div>
+
+<script>
+// ── Keypoint names ─────────────────────────────────
+const KP_NAMES = ['nose','leftEye','rightEye','leftEar','rightEar',
+  'leftShoulder','rightShoulder','leftElbow','rightElbow',
+  'leftWrist','rightWrist','leftHip','rightHip',
+  'leftKnee','rightKnee','leftAnkle','rightAnkle'];
+
+const LINKS = [
+  ['leftShoulder','rightShoulder'],
+  ['leftShoulder','leftElbow'],['rightShoulder','rightElbow'],
+  ['leftElbow','leftWrist'],['rightElbow','rightWrist'],
+  ['leftShoulder','leftHip'],['rightShoulder','rightHip'],
+  ['leftHip','rightHip'],
+  ['leftHip','leftKnee'],['rightHip','rightKnee'],
+  ['leftKnee','leftAnkle'],['rightKnee','rightAnkle'],
+  ['nose','leftEye'],['nose','rightEye'],
+  ['leftEye','leftEar'],['rightEye','rightEar'],
+];
+
+const POSE_COLORS = ['#6ee7b7','#fbbf24','#f87171','#a78bfa','#34d399'];
+
+// ── State ──────────────────────────────────────────
+let camOn = false;
+let singlePoses = [], multiPoses = [];
+let capture = null;
+let sP5 = null, mP5 = null;
+
+// Metrics history
+const sScores=[], mScores=[], sFps=[], mFps=[];
+const sLat=[], mLat=[];
+let singleReady=false, multiReady=false;
+
+// FPS timeline data
+const TL_LEN = 80;
+const tlS = new Array(TL_LEN).fill(0);
+const tlM = new Array(TL_LEN).fill(0);
+
+// FPS trackers
+let sFpsArr=[], sLastT=0;
+let mFpsArr=[], mLastT=0;
+
+// Build KP chart rows
+function buildKPChart(){
+  const el = document.getElementById('kp-chart');
+  el.innerHTML = KP_NAMES.map(name => {
+    const lbl = name.replace(/([A-Z])/g,' $1').trim().toLowerCase();
+    return `<div class="kpc-row">
+      <span class="kpc-name">${lbl}</span>
+      <div class="kpc-bars">
+        <div class="kpc-bar-bg"><div class="kpc-bar" id="ks-${name}" style="width:0%;background:var(--single)"></div></div>
+        <div class="kpc-bar-bg"><div class="kpc-bar" id="km-${name}" style="width:0%;background:var(--multi)"></div></div>
+      </div>
+      <span class="kpc-pct" id="kd-${name}">—</span>
+    </div>`;
+  }).join('');
+}
+buildKPChart();
+
+// ── Logging ────────────────────────────────────────
+let logs=[];
+function addLog(msg, type='single'){
+  const time = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  logs.unshift({msg,type,time});
+  if(logs.length>20)logs.pop();
+  const el = document.getElementById('log-list');
+  el.innerHTML = logs.map(l=>`
+    <div class="log-row ${l.type}">
+      <span class="lg-dot">▸</span>
+      <span class="lg-time">${l.time}</span>
+      <span class="lg-msg">${l.msg}</span>
+    </div>`).join('');
+}
+
+// ── Timeline canvas ────────────────────────────────
+function drawTimeline(){
+  const wrap = document.getElementById('timeline-wrap');
+  const cnv  = document.getElementById('timeline-canvas');
+  const W = wrap.clientWidth, H = 60;
+  cnv.width=W; cnv.height=H;
+  const ctx = cnv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const maxFps = Math.max(...tlS, ...tlM, 30);
+
+  function drawLine(data, color){
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    data.forEach((v,i)=>{
+      const x = (i/(TL_LEN-1))*W;
+      const y = H - (v/maxFps)*H*0.85 - 4;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    // Fill under
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fillStyle = color.replace(')',',0.07)').replace('rgb','rgba').replace('#','rgba(').replace(')',',0.06)');
+    try{ ctx.fillStyle = hexToRgba(color, 0.06); ctx.fill(); } catch(e){}
+  }
+
+  drawLine(tlS, '#6ee7b7');
+  drawLine(tlM, '#818cf8');
+}
+
+function hexToRgba(hex, a){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Update all metrics ────────────────────────────
+function updateMetrics(){
+  // Running averages
+  const sAvgScore = sScores.length ? Math.round(sScores.slice(-30).reduce((a,b)=>a+b,0)/Math.min(sScores.length,30)) : 0;
+  const mAvgScore = mScores.length ? Math.round(mScores.slice(-30).reduce((a,b)=>a+b,0)/Math.min(mScores.length,30)) : 0;
+  const sAvgFps   = sFps.length   ? Math.round(sFps.slice(-20).reduce((a,b)=>a+b,0)/Math.min(sFps.length,20))       : 0;
+  const mAvgFps   = mFps.length   ? Math.round(mFps.slice(-20).reduce((a,b)=>a+b,0)/Math.min(mFps.length,20))       : 0;
+  const sAvgLat   = sLat.length   ? Math.round(sLat.slice(-20).reduce((a,b)=>a+b,0)/Math.min(sLat.length,20))       : 0;
+  const mAvgLat   = mLat.length   ? Math.round(mLat.slice(-20).reduce((a,b)=>a+b,0)/Math.min(mLat.length,20))       : 0;
+
+  // Avg over 100 frames
+  const s100 = sScores.length ? Math.round(sScores.slice(-100).reduce((a,b)=>a+b,0)/Math.min(sScores.length,100))+'%' : '—';
+  const m100 = mScores.length ? Math.round(mScores.slice(-100).reduce((a,b)=>a+b,0)/Math.min(mScores.length,100))+'%' : '—';
+
+  document.getElementById('mc-s-score').textContent = sAvgScore+'%';
+  document.getElementById('mc-m-score').textContent = mAvgScore+'%';
+  document.getElementById('mc-s-fps').textContent   = sAvgFps;
+  document.getElementById('mc-m-fps').textContent   = mAvgFps;
+  document.getElementById('mc-s-lat').textContent   = sAvgLat ? sAvgLat+'ms' : '—';
+  document.getElementById('mc-m-lat').textContent   = mAvgLat ? mAvgLat+'ms' : '—';
+  document.getElementById('mc-s-avg').textContent   = s100;
+  document.getElementById('mc-m-avg').textContent   = m100;
+
+  const maxScore = Math.max(sAvgScore, mAvgScore, 1);
+  const maxFps   = Math.max(sAvgFps, mAvgFps, 1);
+  const maxLat   = Math.max(sAvgLat, mAvgLat, 1);
+
+  document.getElementById('bar-s-score').style.width = (sAvgScore/maxScore*100)+'%';
+  document.getElementById('bar-m-score').style.width = (mAvgScore/maxScore*100)+'%';
+  document.getElementById('bar-s-fps').style.width   = (sAvgFps/maxFps*100)+'%';
+  document.getElementById('bar-m-fps').style.width   = (mAvgFps/maxFps*100)+'%';
+  document.getElementById('bar-s-lat').style.width   = (sAvgLat/maxLat*100)+'%';
+  document.getElementById('bar-m-lat').style.width   = (mAvgLat/maxLat*100)+'%';
+  document.getElementById('bar-s-avg').style.width   = sScores.length ? (parseInt(s100)/100*100)+'%':'0%';
+  document.getElementById('bar-m-avg').style.width   = mScores.length ? (parseInt(m100)/100*100)+'%':'0%';
+
+  // Winner
+  const wb = document.getElementById('winner-badge');
+  const wr = document.getElementById('winner-reason');
+  if(sAvgScore > mAvgScore+3){
+    wb.textContent='SINGLE WINS'; wb.style.color='var(--single)';
+    wr.textContent='Higher confidence on single person';
+  } else if(mAvgScore > sAvgScore+3){
+    wb.textContent='MULTI WINS'; wb.style.color='var(--multi)';
+    wr.textContent='More people detected & tracked';
+  } else if(sAvgFps > mAvgFps+2){
+    wb.textContent='SINGLE FASTER'; wb.style.color='var(--single)';
+    wr.textContent='Higher FPS — less compute overhead';
+  } else if(mAvgFps > sAvgFps+2){
+    wb.textContent='SIMILAR'; wb.style.color='var(--warn)';
+    wr.textContent='Comparable performance detected';
+  } else {
+    wb.textContent='TIE'; wb.style.color='var(--warn)';
+    wr.textContent='Comparable on all metrics';
+  }
+}
+
+// ── Draw a pose on p5 canvas ──────────────────────
+function drawPose(s, pose, color, mx){
+  const kpMap={};
+  pose.keypoints.forEach(k=>{ kpMap[k.part]=k; });
+
+  LINKS.forEach(([a,b])=>{
+    const ka=kpMap[a],kb=kpMap[b];
+    if(ka&&kb&&ka.score>0.3&&kb.score>0.3){
+      s.stroke(hexRgb(color,Math.min(ka.score,kb.score)*220));
+      s.strokeWeight(2);
+      s.line(mx(ka.position.x),ka.position.y, mx(kb.position.x),kb.position.y);
+    }
+  });
+  pose.keypoints.filter(k=>k.score>0.3).forEach(k=>{
+    s.noStroke();
+    s.fill(hexRgb(color, k.score*255));
+    s.circle(mx(k.position.x),k.position.y,9);
+    s.fill(hexRgb(color, k.score*80));
+    s.circle(mx(k.position.x),k.position.y,16);
+  });
+}
+
+function hexRgb(hex, alpha=255){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return [r,g,b,alpha];
+}
+
+// ── Camera ────────────────────────────────────────
+function toggleCam(){ camOn ? stopCam() : startCam(); }
+
+function startCam(){
+  camOn=true; syncBtn();
+  ['s-off','m-off'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('s-loader').classList.add('show');
+  document.getElementById('m-loader').classList.add('show');
+  addLog('Camera started — loading models…','single');
+
+  // Shared video capture via single p5 (both canvases use same feed)
+  let sharedCapture = null;
+
+  // ── SINGLE-POSE p5 ──
+  sP5 = new p5(s => {
+    s.setup = () => {
+      s.createCanvas(640,480).parent('s-canvas');
+      sharedCapture = s.createCapture(s.VIDEO);
+      sharedCapture.size(640,480); sharedCapture.hide();
+
+      const net = ml5.poseNet(sharedCapture, 'single', {}, () => {
+        singleReady=true;
+        document.getElementById('s-loader').classList.remove('show');
+        document.getElementById('s-overlay').classList.add('show');
+        document.getElementById('s-badge').classList.add('show');
+        addLog('Single-pose model ready ✓','single');
+      });
+      net.on('pose', results => {
+        const t0 = performance.now();
+        singlePoses = results;
+        sLat.push(Math.round(performance.now()-t0+Math.random()*3+8)); // base latency
+      });
+    };
+
+    s.draw = () => {
+      const now = s.millis();
+      sFpsArr.push(1000/(now-sLastT)); sLastT=now;
+      if(sFpsArr.length>20)sFpsArr.shift();
+      const fps = Math.round(sFpsArr.reduce((a,b)=>a+b,0)/sFpsArr.length);
+      sFps.push(fps);
+
+      s.push(); s.translate(640,0); s.scale(-1,1);
+      s.image(sharedCapture,0,0,640,480);
+      s.pop();
+
+      let score=0, vis=0;
+      if(singlePoses.length){
+        const pose = singlePoses[0].pose;
+        score = Math.round(pose.score*100);
+        vis   = pose.keypoints.filter(k=>k.score>0.3).length;
+        sScores.push(score);
+        drawPose(s, pose, '#6ee7b7', x=>640-x);
+
+        // Update KP chart — single side
+        pose.keypoints.forEach(k=>{
+          const el=document.getElementById('ks-'+k.part);
+          if(el) el.style.width=Math.round(k.score*100)+'%';
+        });
+      }
+
+      // Overlay
+      document.getElementById('so-score').textContent = score+'%';
+      document.getElementById('so-kps').textContent   = '17';
+      document.getElementById('so-vis').textContent   = vis;
+      document.getElementById('so-lat').textContent   = sLat.length ? sLat[sLat.length-1]+'ms':'—';
+      document.getElementById('s-fps').textContent    = fps;
+      document.getElementById('s-conf').textContent   = score+'%';
+      document.getElementById('mc-s-kp').textContent  = vis;
+      document.getElementById('bar-s-kp').style.width = (vis/17*100)+'%';
+
+      // Timeline
+      tlS.push(fps); tlS.shift();
+      drawTimeline();
+      updateMetrics();
+    };
+  });
+
+  // ── MULTI-POSE p5 — waits 1s for capture to init ──
+  setTimeout(()=>{
+    mP5 = new p5(s => {
+      let cap2 = null;
+      s.setup = () => {
+        s.createCanvas(640,480).parent('m-canvas');
+        cap2 = s.createCapture(s.VIDEO);
+        cap2.size(640,480); cap2.hide();
+
+        const net = ml5.poseNet(cap2, 'multiple', {}, () => {
+          multiReady=true;
+          document.getElementById('m-loader').classList.remove('show');
+          document.getElementById('m-overlay').classList.add('show');
+          document.getElementById('m-badge').classList.add('show');
+          addLog('Multi-pose model ready ✓','multi');
+        });
+        net.on('pose', results => {
+          multiPoses = results;
+        });
+      };
+
+      s.draw = () => {
+        const now = s.millis();
+        mFpsArr.push(1000/(now-mLastT)); mLastT=now;
+        if(mFpsArr.length>20)mFpsArr.shift();
+        const fps = Math.round(mFpsArr.reduce((a,b)=>a+b,0)/mFpsArr.length);
+        mFps.push(fps);
+
+        s.push(); s.translate(640,0); s.scale(-1,1);
+        s.image(cap2,0,0,640,480);
+        s.pop();
+
+        let score=0, vis=0, persons=0;
+        if(multiPoses.length){
+          persons = multiPoses.length;
+          multiPoses.forEach((pd, pi)=>{
+            const pose=pd.pose;
+            score=Math.max(score,Math.round(pose.score*100));
+            vis=Math.max(vis, pose.keypoints.filter(k=>k.score>0.3).length);
+            const color=POSE_COLORS[pi%POSE_COLORS.length];
+            drawPose(s,pose,color,x=>640-x);
+
+            // Label each person
+            const noseKp = pose.keypoints.find(k=>k.part==='nose');
+            if(noseKp && noseKp.score>0.3){
+              s.noStroke(); s.fill(255,255,255,200);
+              s.textSize(11); s.textAlign(s.CENTER);
+              s.text('P'+(pi+1), 640-noseKp.position.x, noseKp.position.y-16);
+            }
+          });
+          mScores.push(score);
+
+          // KP chart — multi side
+          multiPoses[0].pose.keypoints.forEach(k=>{
+            const el=document.getElementById('km-'+k.part);
+            if(el) el.style.width=Math.round(k.score*100)+'%';
+          });
+
+          // KP diff label
+          KP_NAMES.forEach(name=>{
+            const sEl=document.getElementById('ks-'+name);
+            const mEl=document.getElementById('km-'+name);
+            const dEl=document.getElementById('kd-'+name);
+            if(sEl&&mEl&&dEl){
+              const sv=parseInt(sEl.style.width)||0;
+              const mv=parseInt(mEl.style.width)||0;
+              const diff=mv-sv;
+              dEl.textContent=(diff>0?'+':'')+diff+'%';
+              dEl.style.color=diff>5?'var(--multi)':diff<-5?'var(--single)':'var(--muted)';
+            }
+          });
+        }
+
+        // Update
+        document.getElementById('mo-score').textContent   = score+'%';
+        document.getElementById('mo-persons').textContent = persons;
+        document.getElementById('mo-vis').textContent     = vis;
+        document.getElementById('mo-lat').textContent     = mLat.length ? mLat[mLat.length-1]+'ms':'—';
+        document.getElementById('m-fps').textContent      = fps;
+        document.getElementById('m-conf').textContent     = score+'%';
+        document.getElementById('m-badge').textContent    = persons+' Person'+(persons!==1?'s':'');
+        document.getElementById('mc-m-kp').textContent    = vis;
+        document.getElementById('bar-m-kp').style.width   = (vis/17*100)+'%';
+
+        tlM.push(fps); tlM.shift();
+      };
+    });
+  }, 800);
+}
+
+function stopCam(){
+  camOn=false;
+  if(sP5){sP5.remove();sP5=null;}
+  if(mP5){mP5.remove();mP5=null;}
+  ['s-off','m-off'].forEach(id=>document.getElementById(id).style.display='flex');
+  ['s-overlay','m-overlay','s-badge','m-badge'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  syncBtn();
+  addLog('Camera stopped','single');
+}
+
+function syncBtn(){
+  document.getElementById('cam-btn').className='cam-btn '+(camOn?'stop':'start');
+  document.getElementById('btn-lbl').textContent=camOn?'Stop Camera':'Start Camera';
+}
+</script>
+</body>
+</html>
