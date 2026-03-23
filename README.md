@@ -47,6 +47,9 @@ Click on the links below to explore each lab experiment.
 | 📁 **Practical 3** | **Text Sentiment Analysis** using RNN / Pre-trained model | [Explore Practical 3](./Practical3) |
 | 📁 **Practical 4** | Image Classification using Pre-trained Model (MobileNet) | [Explore Practical 4](./Practical4) |
 | 📁 **Practical 5** | Webcam-based Object Detection - Realtime detection | [Explore Practical 5](./Practical5) |
+| 📁 **Practical 6** | Pose Detection with Pre-trained Model (MobileNet) | [Explore Practical 6](./Practical6) |
+| 📁 **Practical 7** | Deploying a Model in Browser | [Explore Practical 7](./Practical7) |
+| 📁 **Practical 8** | Transfer Learning with Images | [Explore Practical 8](./Practical8) |
 ---
 
 # 🛠️ Tech Stack
