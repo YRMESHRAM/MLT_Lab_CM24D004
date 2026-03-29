@@ -50,6 +50,7 @@ Click on the links below to explore each lab experiment.
 | 📁 **Practical 6** | Pose Detection with Pre-trained Model (MobileNet) | [Explore Practical 6](./Practical6) |
 | 📁 **Practical 7** | Deploying a Model in Browser | [Explore Practical 7](./Practical7) |
 | 📁 **Practical 8** | Transfer Learning with Images | [Explore Practical 8](./Practical8) |
+| 📁 **Postlab** | **Sign Language Recognition** using Teachable Machine and TensorFlow.js | [Explore Postlab](./Postlab) |
 ---
 
 # 🛠️ Tech Stack

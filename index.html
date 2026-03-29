@@ -462,6 +462,9 @@ const practicals = [
   { num:"08", tag:"Fine-tuning · Images", title:"Transfer Learning",
     desc:"Transfer Learning with Images using pre-trained feature extractors",
     color:"#7a1a48", icon:"🔄", path:"./Practical8" },
+  { num:"09", tag:"Postlab · Final Project", title:"Sign Language Recognition",
+    desc:"Real-time Indian/American Sign Language Alphabet Detection using Teachable Machine and TensorFlow.js",
+    color:"#d35400", icon:"🖐️", path:"./Postlab" },
 ];
 
 const aIcons = ["📄","📋","📝"];
@@ -472,25 +475,27 @@ practicals.forEach((p, i) => {
   el.className = 'pcard';
   el.style.cssText = `animation: fadeUp 0.5s ${0.06*i}s ease both`;
 
-  const assignRows = [1,2,3].map((n, ai) => `
-    <a href="${p.path}/Assingment${n}/index.html" class="flink">
-      <div class="ficon">${aIcons[ai]}</div>
+  const files = p.num === "09" ? [] : [1,2,3].map((n, ai) => ({ name: `Assignment ${n}`, subPath: `Assingment${n}/index.html`, icon: aIcons[ai] }));
+
+  const assignRows = files.map(f => `
+    <a href="${p.path}/${f.subPath}" class="flink">
+      <div class="ficon">${f.icon}</div>
       <div class="ftext">
-        <span class="fname">Assignment ${n}</span>
-        <span class="fsub">${p.path}/Assingment${n}/index.html</span>
+        <span class="fname">${f.name}</span>
+        <span class="fsub">${p.path}/${f.subPath}</span>
       </div>
       <span class="farr">→</span>
     </a>
   `).join('');
 
-  const label = p.num === "00" ? "Prelab" : "Prac";
-  const panelLabel = p.num === "00" ? "Files — Prelab" : `Files — Practical ${parseInt(p.num)}`;
-  const mainLabel = p.num === "00" ? "Prelab — Main Index" : `Practical ${parseInt(p.num)} — Main Index`;
+  const label = p.num === "00" ? "Prelab" : (p.num === "09" ? "Post" : "Prac");
+  const panelLabel = p.num === "00" ? "Files — Prelab" : (p.num === "09" ? "Files — Postlab" : `Files — Practical ${parseInt(p.num)}`);
+  const mainLabel = p.num === "00" ? "Prelab — Main Index" : (p.num === "09" ? "Postlab — Main Index" : `Practical ${parseInt(p.num)} — Main Index`);
 
   el.innerHTML = `
     <div class="pcard-trigger" onclick="tog(this)">
       <div class="pcard-num">
-        <div class="num-big">${p.num === "00" ? "PL" : p.num}</div>
+        <div class="num-big">${p.num === "00" ? "PL" : (p.num === "09" ? "PS" : p.num)}</div>
         <div class="num-small">${label}</div>
       </div>
       <div class="pcard-body">
